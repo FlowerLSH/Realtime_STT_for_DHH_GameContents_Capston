@@ -1,0 +1,245 @@
+{
+  "image": "test2_normal.png",
+  "players": [
+    {
+      "row": 1,
+      "side": "BLUE",
+      "portrait_xyxy": [
+        713,
+        827,
+        760,
+        868
+      ],
+      "topk": [
+        {
+          "name": "KSante",
+          "score": 0.6690971255302429
+        },
+        {
+          "name": "Sett",
+          "score": 0.6565026640892029
+        },
+        {
+          "name": "Draven",
+          "score": 0.6462235450744629
+        }
+      ]
+    },
+    {
+      "row": 1,
+      "side": "RED",
+      "portrait_xyxy": [
+        1160,
+        827,
+        1207,
+        868
+      ],
+      "topk": [
+        {
+          "name": "Heimerdinger",
+          "score": 0.6773304343223572
+        },
+        {
+          "name": "Draven",
+          "score": 0.6741232872009277
+        },
+        {
+          "name": "Brand",
+          "score": 0.668100118637085
+        }
+      ]
+    },
+    {
+      "row": 2,
+      "side": "BLUE",
+      "portrait_xyxy": [
+        713,
+        878,
+        760,
+        919
+      ],
+      "topk": [
+        {
+          "name": "Skarner",
+          "score": 0.657543957233429
+        },
+        {
+          "name": "DrMundo",
+          "score": 0.620121955871582
+        },
+        {
+          "name": "TwistedFate",
+          "score": 0.6041548252105713
+        }
+      ]
+    },
+    {
+      "row": 2,
+      "side": "RED",
+      "portrait_xyxy": [
+        1160,
+        878,
+        1207,
+        919
+      ],
+      "topk": [
+        {
+          "name": "TwistedFate",
+          "score": 0.6823316812515259
+        },
+        {
+          "name": "Draven",
+          "score": 0.675378680229187
+        },
+        {
+          "name": "Zed",
+          "score": 0.658319890499115
+        }
+      ]
+    },
+    {
+      "row": 3,
+      "side": "BLUE",
+      "portrait_xyxy": [
+        713,
+        929,
+        760,
+        970
+      ],
+      "topk": [
+        {
+          "name": "MasterYi",
+          "score": 0.5930972099304199
+        },
+        {
+          "name": "Zed",
+          "score": 0.5914925932884216
+        },
+        {
+          "name": "Brand",
+          "score": 0.5834774971008301
+        }
+      ]
+    },
+    {
+      "row": 3,
+      "side": "RED",
+      "portrait_xyxy": [
+        1160,
+        929,
+        1207,
+        970
+      ],
+      "topk": [
+        {
+          "name": "Orianna",
+          "score": 0.6615014672279358
+        },
+        {
+          "name": "Diana",
+          "score": 0.6535004377365112
+        },
+        {
+          "name": "Corki",
+          "score": 0.639589786529541
+        }
+      ]
+    },
+    {
+      "row": 4,
+      "side": "BLUE",
+      "portrait_xyxy": [
+        713,
+        981,
+        760,
+        1022
+      ],
+      "topk": [
+        {
+          "name": "Xayah",
+          "score": 0.6802629828453064
+        },
+        {
+          "name": "Diana",
+          "score": 0.6689369678497314
+        },
+        {
+          "name": "Quinn",
+          "score": 0.6676838397979736
+        }
+      ]
+    },
+    {
+      "row": 4,
+      "side": "RED",
+      "portrait_xyxy": [
+        1160,
+        981,
+        1207,
+        1022
+      ],
+      "topk": [
+        {
+          "name": "Sivir",
+          "score": 0.7296711206436157
+        },
+        {
+          "name": "Janna",
+          "score": 0.7242512106895447
+        },
+        {
+          "name": "Sett",
+          "score": 0.7145036458969116
+        }
+      ]
+    },
+    {
+      "row": 5,
+      "side": "BLUE",
+      "portrait_xyxy": [
+        713,
+        1032,
+        760,
+        1073
+      ],
+      "topk": [
+        {
+          "name": "Xayah",
+          "score": 0.6639304757118225
+        },
+        {
+          "name": "Quinn",
+          "score": 0.653766393661499
+        },
+        {
+          "name": "Lucian",
+          "score": 0.6500105857849121
+        }
+      ]
+    },
+    {
+      "row": 5,
+      "side": "RED",
+      "portrait_xyxy": [
+        1160,
+        1032,
+        1207,
+        1073
+      ],
+      "topk": [
+        {
+          "name": "Nautilus",
+          "score": 0.6182622909545898
+        },
+        {
+          "name": "Zed",
+          "score": 0.6031820774078369
+        },
+        {
+          "name": "Rell",
+          "score": 0.5951160788536072
+        }
+      ]
+    }
+  ]
+}

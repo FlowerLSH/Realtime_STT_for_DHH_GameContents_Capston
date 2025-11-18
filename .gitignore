@@ -1,0 +1,17 @@
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+Capston/
+
+trash/
+
+logs/
+
+sample.wav
+test.py
+
+ScreenOCR/assets/champions
+ScreenOCR/assets/items
+ScreenOCR/runs/champion_cls_v2/temp

@@ -1,0 +1,10 @@
+{
+  "speaker_id": "3",
+  "num_files": 2,
+  "num_frames": 15,
+  "num_prototypes": 2,
+  "win_sec": 2.0,
+  "hop_sec": 0.5,
+  "target_rms": 0.04,
+  "dyn_keep_pct": 70
+}

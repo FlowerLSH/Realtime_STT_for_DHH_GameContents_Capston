@@ -1,0 +1,3 @@
+filename,filepath,embedding_path,embedding_dim,duration_sec,sample_rate
+data1.wav,C:\Nemo\ECAPA-TDNN\data\wav\data1.wav,C:\Nemo\ECAPA-TDNN\out\embeddings\data1.npy,1,2.276,16000
+data2.wav,C:\Nemo\ECAPA-TDNN\data\wav\data2.wav,C:\Nemo\ECAPA-TDNN\out\embeddings\data2.npy,1,1.902,16000
