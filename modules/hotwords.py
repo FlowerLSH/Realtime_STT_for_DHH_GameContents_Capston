@@ -4,7 +4,9 @@ from pathlib import Path
 from config import DEFAULT_HOTWORDS_TXT, USE_SCREEN_OCR_HOTWORDS, SCREEN_OCR_INCLUDE_SKILLS
 
 try:
-    from screenocr_hotwords import get_ocr_results
+    from . import screenocr
+
+    get_ocr_results = 0
 except ImportError:
     get_ocr_results = None
 
@@ -31,7 +33,7 @@ def _load_screen_ocr_hotwords() -> list[str]:
     if get_ocr_results is None:
         return []
     try:
-        return get_ocr_results(flag_skills=SCREEN_OCR_INCLUDE_SKILLS)
+        return screenocr.get_ocr_results(flag_skills=SCREEN_OCR_INCLUDE_SKILLS)
     except Exception:
         return []
 
