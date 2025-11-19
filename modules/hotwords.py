@@ -29,12 +29,15 @@ def _load_default_hotwords(path: str) -> list[str]:
 
 def _load_screen_ocr_hotwords() -> list[str]:
     if not USE_SCREEN_OCR_HOTWORDS:
+        print(1)
         return []
     if get_ocr_results is None:
+        print(2)
         return []
     try:
         return screenocr.get_ocr_results(flag_skills=SCREEN_OCR_INCLUDE_SKILLS)
     except Exception:
+        print(3)
         return []
 
 

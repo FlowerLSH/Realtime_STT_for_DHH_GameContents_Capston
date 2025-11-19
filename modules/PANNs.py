@@ -4,7 +4,7 @@
 import os, sys, time, math, queue
 import numpy as np
 
-CHECKPOINT_PATH = r".\panns_data\Cnn14_mAP=0.431.pth"
+CHECKPOINT_PATH = r"..\panns_data\Cnn14_mAP=0.431.pth"
 DEVICE_INDEX = None
 SR_IN = 32000
 CHANNELS = 1

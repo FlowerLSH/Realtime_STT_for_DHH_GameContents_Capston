@@ -50,6 +50,8 @@ def run_pipeline():
     hotwords = build_hotword_list()
     print(f"[hotwords] loaded {len(hotwords)} items")
 
+    print(hotwords)
+
     stt_engine = create_stt_backend(
         model_name=MODEL_NAME,
         backend_type=STT_BACKEND_TYPE,

@@ -4,6 +4,8 @@ import torch, torch.nn as nn
 from torchvision import models, transforms
 from PIL import Image
 
+from config import CHAMP_THRESHOLD, RETRY_MAX, RETRY_DELAY, MIN_CLS_PROB, MIN_OCR_SCORE, CHAMP_RETRY_WAIT
+
 PROJECT_ROOT = r".\ScreenOCR"
 SAMPLES_DIR  = os.path.join(PROJECT_ROOT, "data", "samples")
 PROFILE_5x2  = os.path.join(PROJECT_ROOT, "profiles", "layout_5x2.json")
@@ -175,12 +177,8 @@ def rerank_with_lexicon(ocr_candidates, lex, strict=False):
         out=name if name and (l>=0.70 or (c<=0.85 and l>=0.60)) else t
         if s>best_score: best_score=s; best_txt=out
     return best_txt, best_score
-# === Retry Settings ===
+
 import time
-RETRY_MAX = 2
-RETRY_DELAY = 0.3
-MIN_CLS_PROB = 0.55
-MIN_OCR_SCORE = 0.65
 
 def ocr_box_with_retry(ocr, bgr, rc, kind, lex, strict, pad_pct, min_score=MIN_OCR_SCORE, retries=RETRY_MAX, delay=RETRY_DELAY):
     if not rc:
@@ -290,64 +288,147 @@ def load_champion_skills(paths):
 
 def get_ocr_results(flag_skills):
     __results = []
-    src=load_any_image(SAMPLES_DIR); bgr=cv2.imread(src)
-    if bgr is None: raise RuntimeError(f"fail read {src}")
-    bgr=resize_to_target(bgr, TARGET_W, TARGET_H); H,W=bgr.shape[:2]
-    with open(PROFILE_ROI,"r",encoding="utf-8") as f: prof_roi=json.load(f)
-    with open(PROFILE_5x2,"r",encoding="utf-8") as f: prof=json.load(f)
+    src = load_any_image(SAMPLES_DIR)
+    bgr = cv2.imread(src)
+    if bgr is None:
+        raise RuntimeError(f"fail read {src}")
+    bgr = resize_to_target(bgr, TARGET_W, TARGET_H)
+    H, W = bgr.shape[:2]
 
-    bot_xyxy=pct_to_xyxy(W,H, prof_roi["bottom_panel"])
-    top_xyxy=pct_to_xyxy(W,H, prof_roi["top_panel"] if "top_panel" in prof_roi else {"x":0.0,"y":0.0,"w":1.0,"h":0.12})
+    with open(PROFILE_ROI, "r", encoding="utf-8") as f:
+        prof_roi = json.load(f)
+    with open(PROFILE_5x2, "r", encoding="utf-8") as f:
+        prof = json.load(f)
 
-    n_rows=prof["n_rows"]; center_ratio=prof["center_ratio"]; center_gap_ratio=prof["center_gap_ratio"]
-    row_pad_y_ratio=prof["row_pad_y_ratio"]; lr_pad_x_ratio=prof["lr_pad_x_ratio"]; layout=prof["layout"]
+    bot_xyxy = pct_to_xyxy(W, H, prof_roi["bottom_panel"])
+    top_xyxy = pct_to_xyxy(
+        W,
+        H,
+        prof_roi["top_panel"] if "top_panel" in prof_roi else {"x": 0.0, "y": 0.0, "w": 1.0, "h": 0.12},
+    )
 
-    clf=TorchClassifier(CKPT_PATH, LABELS_JSON, IMG_SIZE, DEVICE)
-    try: 
-        ocr=OCRBackend(use_gpu=(DEVICE=="cuda"))
-    except: 
-        ocr=OCRBackend(use_gpu=False)
-    lex_players=load_lexicon(LEX_PLAYERS); lex_teams=load_lexicon(LEX_TEAMS); lex_leagues=load_lexicon(LEX_LEAGUES)
+    n_rows = prof["n_rows"]
+    center_ratio = prof["center_ratio"]
+    center_gap_ratio = prof["center_gap_ratio"]
+    row_pad_y_ratio = prof["row_pad_y_ratio"]
+    lr_pad_x_ratio = prof["lr_pad_x_ratio"]
+    layout = prof["layout"]
+
+    clf = TorchClassifier(CKPT_PATH, LABELS_JSON, IMG_SIZE, DEVICE)
+    try:
+        ocr = OCRBackend(use_gpu=(DEVICE == "cuda"))
+    except:
+        ocr = OCRBackend(use_gpu=False)
+
+    lex_players = load_lexicon(LEX_PLAYERS)
+    lex_teams = load_lexicon(LEX_TEAMS)
+    lex_leagues = load_lexicon(LEX_LEAGUES)
 
     tL_rc, tR_rc, lgL_rc, lgR_rc, src_tag = get_top_rects(bgr, top_xyxy, prof)
 
-    tL_txt,_ = ocr_box_with_retry(ocr, bgr, tL_rc, "teams",   lex_teams,   strict=STRICT_TEAMS,   pad_pct=TEAM_PAD_PCT) if tL_rc else ("",0.0)
-    tR_txt,_ = ocr_box_with_retry(ocr, bgr, tR_rc, "teams",   lex_teams,   strict=STRICT_TEAMS,   pad_pct=TEAM_PAD_PCT) if tR_rc else ("",0.0)
-    lgL_txt,_= ocr_box_with_retry(ocr, bgr, lgL_rc, "leagues",lex_leagues, strict=STRICT_LEAGUE,  pad_pct=LEAG_PAD_PCT) if lgL_rc else ("",0.0)
-    lgR_txt,_= ocr_box_with_retry(ocr, bgr, lgR_rc, "leagues",lex_leagues, strict=STRICT_LEAGUE,  pad_pct=LEAG_PAD_PCT) if lgR_rc else ("",0.0)
+    tL_txt, _ = ocr_box_with_retry(
+        ocr, bgr, tL_rc, "teams", lex_teams, strict=STRICT_TEAMS, pad_pct=TEAM_PAD_PCT
+    ) if tL_rc else ("", 0.0)
+    tR_txt, _ = ocr_box_with_retry(
+        ocr, bgr, tR_rc, "teams", lex_teams, strict=STRICT_TEAMS, pad_pct=TEAM_PAD_PCT
+    ) if tR_rc else ("", 0.0)
+    lgL_txt, _ = ocr_box_with_retry(
+        ocr, bgr, lgL_rc, "leagues", lex_leagues, strict=STRICT_LEAGUE, pad_pct=LEAG_PAD_PCT
+    ) if lgL_rc else ("", 0.0)
+    lgR_txt, _ = ocr_box_with_retry(
+        ocr, bgr, lgR_rc, "leagues", lex_leagues, strict=STRICT_LEAGUE, pad_pct=LEAG_PAD_PCT
+    ) if lgR_rc else ("", 0.0)
 
-    rows=split_rows_2cols(bot_xyxy, n_rows, center_ratio, center_gap_ratio, row_pad_y_ratio, lr_pad_x_ratio)
-    results=[]
-    for r,(left_base,right_base) in enumerate(rows):
-        for side, base in (("BLUE", left_base), ("RED", right_base)):
-            lay=layout["L"] if side=="BLUE" else layout["R"]
-            slot_inner=pct_to_rect(base, lay["slot_inner_pct"])
-            portrait_rc=pct_to_rect(slot_inner, lay["portrait_pct"])
-            nickname_rc=pct_to_rect(base, lay["nickname_pct"])
-            x1,y1,x2,y2=portrait_rc; crop=bgr[y1:y2, x1:x2]
-            if crop is None or crop.size==0: results.append((side,r+1,"","EMPTY",0.0,[])); continue
-            topk, name, prob = predict_topk_with_retry(clf, crop, TOPK, min_prob=MIN_CLS_PROB, retries=RETRY_MAX, delay=RETRY_DELAY)
-            nx1,ny1,nx2,ny2=nickname_rc; nick_crop=bgr[ny1:ny2, nx1:nx2]
-            nick_txt, _ = ocr_nick_with_retry(ocr, nick_crop, lex_players, strict=STRICT_PLAYERS, min_score=MIN_OCR_SCORE, retries=RETRY_MAX, delay=RETRY_DELAY)
-            results.append((side,r+1,nick_txt,name,prob,topk))
+    team_league_tokens = []
+    for s in (tL_txt, tR_txt, lgL_txt, lgR_txt):
+        if s:
+            team_league_tokens.append(s)
 
-    results_sorted=sorted(results, key=lambda t:(0 if t[0] in ("BLUE","L") else 1, t[1]))
+    rows = split_rows_2cols(
+        bot_xyxy, n_rows, center_ratio, center_gap_ratio, row_pad_y_ratio, lr_pad_x_ratio
+    )
+    expected_slots = n_rows * 2
 
-    results.append(tL_txt)
-    results.append(tR_txt)
-    results.append(lgL_txt)
-    results.append(lgR_txt)
+    def classify_champs():
+        local_results = []
+        for r, (left_base, right_base) in enumerate(rows):
+            for side, base in (("BLUE", left_base), ("RED", right_base)):
+                lay = layout["L"] if side == "BLUE" else layout["R"]
+                slot_inner = pct_to_rect(base, lay["slot_inner_pct"])
+                portrait_rc = pct_to_rect(slot_inner, lay["portrait_pct"])
+                nickname_rc = pct_to_rect(base, lay["nickname_pct"])
+
+                x1, y1, x2, y2 = portrait_rc
+                crop = bgr[y1:y2, x1:x2]
+                if crop is None or crop.size == 0:
+                    local_results.append((side, r + 1, "", "EMPTY", 0.0, []))
+                    continue
+
+                topk, name, prob = predict_topk_with_retry(
+                    clf,
+                    crop,
+                    TOPK,
+                    min_prob=MIN_CLS_PROB,
+                    retries=RETRY_MAX,
+                    delay=RETRY_DELAY,
+                )
+
+                nx1, ny1, nx2, ny2 = nickname_rc
+                nick_crop = bgr[ny1:ny2, nx1:nx2]
+                nick_txt, _ = ocr_nick_with_retry(
+                    ocr,
+                    nick_crop,
+                    lex_players,
+                    strict=STRICT_PLAYERS,
+                    min_score=MIN_OCR_SCORE,
+                    retries=RETRY_MAX,
+                    delay=RETRY_DELAY,
+                )
+
+                local_results.append((side, r + 1, nick_txt, name, prob, topk))
+        return local_results
+
+    max_attempts = 2
+    results = []
+    champ_fail = False
+    for attempt in range(max_attempts):
+        results = classify_champs()
+        if len(results) != expected_slots:
+            break
+
+        probs = [prob for (_, _, _, _, prob, _) in results]
+        if all(p >= CHAMP_THRESHOLD for p in probs):
+            break
+
+        if attempt == max_attempts - 1:
+            print("챔피언 인식 불가 판정. Hotword 목록에 챔피언 이름이 포함되지 않습니다.")
+            champ_fail = True
+            break
+
+        print(f"챔피언 인식 실패... {CHAMP_RETRY_WAIT}초 후 재시도")
+        time.sleep(CHAMP_RETRY_WAIT)
+
+    results_sorted = sorted(
+        results,
+        key=lambda t: (0 if t[0] in ("BLUE", "L") else 1, t[1]),
+    )
 
     for side, row, nick, name, prob, topk in results_sorted:
-        __results.append(nick)
-        __results.append(name)
+        if nick:
+            __results.append(nick)
+        if (not champ_fail) and name:
+            __results.append(name)
 
-    if flag_skills:
-        skills_map = load_champion_skills([
-            os.path.join(PROJECT_ROOT, "assets", "champion_skills.csv"),
-            os.path.join(PROJECT_ROOT, "champion_skills.csv"),
-            os.path.join(os.path.dirname(__file__), "champion_skills.csv"),
-        ])
+    __results.extend(team_league_tokens)
+
+    if flag_skills and not champ_fail:
+        skills_map = load_champion_skills(
+            [
+                os.path.join(PROJECT_ROOT, "assets", "champion_skills.csv"),
+                os.path.join(PROJECT_ROOT, "champion_skills.csv"),
+                os.path.join(os.path.dirname(__file__), "champion_skills.csv"),
+            ]
+        )
         if skills_map:
             seen = set()
             ordered = []
@@ -355,15 +436,21 @@ def get_ocr_results(flag_skills):
                 if not c or c in ("-", "EMPTY"):
                     continue
                 if c not in seen:
-                    seen.add(c); ordered.append(c)
+                    seen.add(c)
+                    ordered.append(c)
 
             flat_skills = []
             for champ in ordered:
-                kv = [champ, champ.lower(), champ.replace(" ", "").replace("'", "").lower()]
+                kv = [
+                    champ,
+                    champ.lower(),
+                    champ.replace(" ", "").replace("'", "").lower(),
+                ]
                 skills = None
                 for k in kv:
                     if k in skills_map:
-                        skills = skills_map[k]; break
+                        skills = skills_map[k]
+                        break
                 if skills:
                     flat_skills.extend(skills)
 

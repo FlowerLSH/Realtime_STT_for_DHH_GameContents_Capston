@@ -277,7 +277,7 @@ class Labeler:
     def __init__(self, unknown_label: str = "Unknown", conf_threshold: float = None):
         self.unknown_label = unknown_label
         if conf_threshold is None:
-            self.conf_threshold = float(getattr(config, "CONF_THRESHOLD", 0.6))
+            self.conf_threshold = float(getattr(config, "LABEL_THRESHOLD", 0.6))
         else:
             self.conf_threshold = float(conf_threshold)
 
