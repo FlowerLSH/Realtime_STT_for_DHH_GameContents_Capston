@@ -1,28 +1,85 @@
 from pathlib import Path
-from typing import Any, Dict
+from typing import Any, Dict, Optional
+import json
 import sys
 import time
+import config
+
 
 class OutputSink:
-    def __init__(self, out_path: str):
+    def __init__(self, out_path: str, json_mode: bool = True):
         self.path = Path(out_path)
         self.path.parent.mkdir(parents=True, exist_ok=True)
         self.f = self.path.open("w", encoding="utf-8")
         self.start_time = time.time()
+        self.json_mode = json_mode
 
     def close(self):
-        self.f.close()
+        if self.f:
+            self.f.close()
+            self.f = None
+
+    def _elapsed(self) -> float:
+        return time.time() - self.start_time
 
     def _timestamp(self) -> str:
-        elapsed = time.time() - self.start_time
+        elapsed = self._elapsed()
         m = int(elapsed // 60)
         s = elapsed % 60
         return f"[{m:02d}:{s:05.2f}]"
 
-    def write_line(self, text: str, labels: Dict[str, Any] | None = None, prosody_info: Dict[str, Any] | None = None):
+    def _strip_time_in_prosody(self, prosody_info: Dict[str, Any]) -> Dict[str, Any]:
+        if not isinstance(prosody_info, dict):
+            return prosody_info
+        out: Dict[str, Any] = {}
+        for key, value in prosody_info.items():
+            if key in ("segments", "words") and isinstance(value, list):
+                new_list = []
+                for item in value:
+                    if isinstance(item, dict):
+                        new_item = {k: v for k, v in item.items() if k not in ("start", "end")}
+                        new_list.append(new_item)
+                    else:
+                        new_list.append(item)
+                out[key] = new_list
+            else:
+                out[key] = value
+        return out
+
+    def write_line(
+        self,
+        text: str,
+        prosody_info: Optional[Dict[str, Any]] = None,
+    ):
+        if self.f is None:
+            return
+
+        include_time = getattr(config, "INCLUDE_TIME_DATA", True)
+
+        if prosody_info is None:
+            prosody_info = {}
+
+        if not include_time:
+            prosody = self._strip_time_in_prosody(prosody_info)
+        else:
+            prosody = prosody_info
+
         ts = self._timestamp()
-        line = f"{ts} {text}"
-        print(line, flush=True)
+
+        if self.json_mode:
+            record: Dict[str, Any] = {
+                "text": text,
+                "prosody": prosody,
+            }
+            if include_time:
+                record["time"] = time.time()
+                record["elapsed"] = self._elapsed()
+            line = json.dumps(record, ensure_ascii=False)
+        else:
+            line = f"{ts} {text}"
+
+        print(f"{ts} {text}", flush=True)
         sys.stdout.flush()
+
         self.f.write(line + "\n")
         self.f.flush()

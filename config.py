@@ -4,6 +4,8 @@ DEVICE = "cuda"
 COMPUTE_TYPE = "float16"
 LANGUAGE = "en"
 
+INCLUDE_TIME_DATA = True
+
 SAMPLE_RATE = 16000
 CHUNK_MS = 500
 WINDOW_SEC = 5.0
@@ -11,6 +13,8 @@ STEP_SEC = 5.0
 
 OUT_TXT = "logs/output.txt"
 
+CONF_THRESHOLD = 0.6
+
 DEFAULT_HOTWORDS_TXT = r"C:\Capston\default_hotwords.txt"
-USE_SCREEN_OCR_HOTWORDS = True
+USE_SCREEN_OCR_HOTWORDS = False
 SCREEN_OCR_INCLUDE_SKILLS = False

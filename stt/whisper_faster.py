@@ -27,6 +27,7 @@ class WhisperFasterBackend(STTBackend):
             beam_size=1,
             temperature=0.0,
             vad_filter=True,
+            word_timestamps=True,
             condition_on_previous_text=False,
             initial_prompt=initial_prompt if len(initial_prompt) < 200 else initial_prompt[-200:],
         )

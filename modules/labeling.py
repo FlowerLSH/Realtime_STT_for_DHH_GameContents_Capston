@@ -5,6 +5,8 @@ import torch
 from speechbrain.pretrained import EncoderClassifier
 import torchaudio
 
+import config
+
 PROJECT_ROOT = r"C:\Capston\ECAPA-TDNN"
 GALLERY_DIR = str(Path(PROJECT_ROOT) / "models" / "test")
 MODEL_DIR = str(Path(PROJECT_ROOT) / "models" / "ecapa_vox")
@@ -18,12 +20,12 @@ BASE_RMS_TH = 0.003
 DYN_KEEP_PCT = 70
 TARGET_RMS = 0.04
 COHORT_TOP = 10
+WORD_MIN_WIN_SEC = 1.0
 
 MAP_DIR = Path(PROJECT_ROOT) / "test"
 MAP_FILE = MAP_DIR / "casters.txt"
 
 _classifier = None
-_names = None
 _display_names = None
 _cents = None
 
@@ -38,11 +40,11 @@ def ensure_gallery():
     return ok
 
 
-def rms(x):
+def rms(x: torch.Tensor) -> float:
     return float(torch.sqrt(torch.mean(x.float() ** 2) + 1e-12))
 
 
-def rms_normalize(x, target=0.04):
+def rms_normalize(x: torch.Tensor, target: float = TARGET_RMS) -> torch.Tensor:
     r = rms(x)
     if r < 1e-7:
         return x
@@ -51,7 +53,7 @@ def rms_normalize(x, target=0.04):
     return torch.clamp(y, -1.0, 1.0)
 
 
-def frame_signal(x, win_samp, hop_samp):
+def frame_signal(x: torch.Tensor, win_samp: int, hop_samp: int):
     n = x.numel()
     t = 0
     frames = []
@@ -118,7 +120,7 @@ def display_name(raw_label: str, id_map: dict):
     return raw
 
 
-def encode_query_windows(clf, w):
+def encode_query_windows(clf: EncoderClassifier, w: torch.Tensor):
     win = int(WIN_SEC * SR)
     hop = int(HOP_SEC * SR)
     frames = frame_signal(w, win, hop)
@@ -175,7 +177,7 @@ def asnorm_score(s_raw, enroll_vec, test_vec, cohort_cents, topk, exclude_idx=No
 
 
 def _init_model_if_needed():
-    global _classifier, _names, _display_names, _cents
+    global _classifier, _display_names, _cents
     if _classifier is not None:
         return
     gallery_dirs = ensure_gallery()
@@ -188,12 +190,10 @@ def _init_model_if_needed():
     )
     clf.eval()
     id_map = load_id_map(MAP_DIR, MAP_FILE)
-    names = []
     display_names = []
     protos = []
     for sdir in gallery_dirs:
         raw_name = Path(sdir).name
-        names.append(raw_name)
         display_names.append(display_name(raw_name, id_map))
         protos.append(np.load(str(Path(sdir) / "prototypes.npy")))
     cents = []
@@ -204,12 +204,11 @@ def _init_model_if_needed():
         c = l2norm_np(Pn.mean(axis=0))
         cents.append(c)
     _classifier = clf
-    _names = names
     _display_names = display_names
     _cents = np.stack(cents, axis=0)
 
 
-def _load_and_preprocess_waveform(input_data, target_sr=SR):
+def _load_and_preprocess_waveform(input_data, target_sr=SR) -> torch.Tensor:
     waveform = None
     sr = None
     if isinstance(input_data, (str, Path)):
@@ -231,19 +230,7 @@ def _load_and_preprocess_waveform(input_data, target_sr=SR):
     return waveform
 
 
-def GetSpeakerLabel(input_data, sr=SR):
-    _init_model_if_needed()
-    if isinstance(input_data, (str, Path)):
-        x = _load_and_preprocess_waveform(input_data, target_sr=SR)
-    else:
-        if sr != SR:
-            resampler = torchaudio.transforms.Resample(orig_freq=sr, new_freq=SR)
-            input_data = resampler(input_data)
-        x = input_data
-        if isinstance(x, np.ndarray):
-            x = torch.from_numpy(x).float()
-        if x.ndim == 2:
-            x = x.mean(dim=0)
+def _score_speaker_from_waveform(x: torch.Tensor):
     Eq = encode_query_windows(_classifier, x)
     cq = l2norm_np(Eq.mean(axis=0))
     scores = []
@@ -260,13 +247,86 @@ def GetSpeakerLabel(input_data, sr=SR):
         scores.append(s_asn)
     scores = np.asarray(scores)
     idx = int(np.argmax(scores))
-    return _display_names[idx]
+    ex = np.exp(scores - scores.max())
+    conf = float(ex[idx] / ex.sum()) if ex.sum() > 0 else 0.0
+    return idx, conf
+
+
+def GetSpeakerLabel(input_data, sr=SR, return_conf=False):
+    _init_model_if_needed()
+    if isinstance(input_data, (str, Path)):
+        x = _load_and_preprocess_waveform(input_data, target_sr=SR)
+    else:
+        if isinstance(input_data, np.ndarray):
+            x = torch.from_numpy(input_data).float()
+        else:
+            x = input_data
+        if x.ndim == 2:
+            x = x.mean(dim=0)
+        if sr != SR:
+            resampler = torchaudio.transforms.Resample(orig_freq=sr, new_freq=SR)
+            x = resampler(x.unsqueeze(0)).queeze(0)
+    idx, conf = _score_speaker_from_waveform(x)
+    name = _display_names[idx]
+    if return_conf:
+        return name, conf
+    return name
 
 
 class Labeler:
-    def __init__(self):
-        pass
+    def __init__(self, unknown_label: str = "Unknown", conf_threshold: float = None):
+        self.unknown_label = unknown_label
+        if conf_threshold is None:
+            self.conf_threshold = float(getattr(config, "CONF_THRESHOLD", 0.6))
+        else:
+            self.conf_threshold = float(conf_threshold)
 
     def assign_labels(self, input_data, sr=SR, text=None, prosody_info=None):
-        speaker = GetSpeakerLabel(input_data, sr=sr)
-        return {"speaker": speaker}
+        _init_model_if_needed()
+        if prosody_info is None or not isinstance(prosody_info, dict):
+            return {}
+        words = prosody_info.get("words") or []
+        if not words:
+            return {}
+
+        x = _load_and_preprocess_waveform(input_data, target_sr=SR)
+        n = x.numel()
+
+        for w in words:
+            ws = float(w.get("start", 0.0))
+            we = float(w.get("end", 0.0))
+            center = 0.5 * (ws + we)
+            dur = max(we - ws, 0.0)
+
+            if dur >= WORD_MIN_WIN_SEC:
+                win_start = ws
+                win_end = we
+            else:
+                half = WORD_MIN_WIN_SEC * 0.5
+                win_start = center - half
+                win_end = center + half
+
+            if win_start < 0.0:
+                shift = -win_start
+                win_start += shift
+                win_end += shift
+
+            start_idx = int(win_start * SR)
+            end_idx = int(win_end * SR)
+            start_idx = max(0, min(start_idx, n - 1))
+            end_idx = max(start_idx + 1, min(end_idx, n))
+
+            chunk = x[start_idx:end_idx]
+            if chunk.numel() < int(0.1 * SR):
+                w["speaker"] = self.unknown_label
+                continue
+
+            w_idx, w_conf = _score_speaker_from_waveform(chunk)
+            if w_conf < self.conf_threshold:
+                w_name = self.unknown_label
+            else:
+                w_name = _display_names[w_idx]
+
+            w["speaker"] = w_name
+
+        return {}

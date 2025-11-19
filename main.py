@@ -64,7 +64,7 @@ def run_pipeline():
         chunk_ms=CHUNK_MS,
     )
 
-    prosody = ProsodyAnalyzer()
+    prosody = ProsodyAnalyzer(sample_rate=SAMPLE_RATE)
     labeler = Labeler()
     sink = OutputSink(OUT_TXT)
 
@@ -93,7 +93,7 @@ def run_pipeline():
                 language=LANGUAGE,
             )
 
-            if not full_text:
+            if not segments or not full_text:
                 continue
 
             inc = strip_common_prefix(committed_text, full_text)
@@ -101,8 +101,11 @@ def run_pipeline():
                 continue
 
             prosody_info = prosody.analyze(wav, segments)
-            labels = labeler.assign_labels(wav, text=inc, prosody_info=prosody_info)
-            sink.write_line(inc, labels=labels, prosody_info=prosody_info)
+
+            labeler.assign_labels(wav, sr=SAMPLE_RATE, prosody_info=prosody_info)
+
+            sink.write_line(inc, prosody_info=prosody_info)
+
             committed_text += " " + inc
 
     except KeyboardInterrupt:
