@@ -1,2 +1,5 @@
 LCK
 LPL
+LTA
+LCP
+LEC

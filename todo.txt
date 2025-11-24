@@ -1,5 +1,4 @@
 screenocr 고정된 이미지가 아니라 화면 캡처하는 식으로 동작하게 구현
-screenocr asset에 데이터 채우기
 labeling 해설위원 데이터 충분히 채우기
 audio2face 모델 붙이기
 (whisper) hotword 교정 로직

@@ -25,3 +25,19 @@ CHAMP_RETRY_WAIT = 5.0
 DEFAULT_HOTWORDS_TXT = r"C:\Capston\default_hotwords.txt"
 USE_SCREEN_OCR_HOTWORDS = True
 SCREEN_OCR_INCLUDE_SKILLS = False
+
+EVENT_PRIORITY = {
+    "scream": 5,
+    "cheer": 4,
+    "clap": 3,
+    "laugh": 2,
+    "sigh": 1,
+}
+
+EVENT_TAGS = {
+    "sigh": "(한숨) ",
+    "laugh": "(웃음) ",
+    "clap": "(박수) ",
+    "cheer": "(환호) ",
+    "scream": "(비명) ",
+}
