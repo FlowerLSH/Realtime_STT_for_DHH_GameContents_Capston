@@ -8,16 +8,13 @@ import config
 
 class OutputSink:
     def __init__(self, out_path: str, json_mode: bool = True):
-        self.path = Path(out_path)
-        self.path.parent.mkdir(parents=True, exist_ok=True)
-        self.f = self.path.open("w", encoding="utf-8")
+        self.dir = Path(out_path)
+        self.dir.mkdir(parents=True, exist_ok=True)
         self.start_time = time.time()
         self.json_mode = json_mode
 
     def close(self):
-        if self.f:
-            self.f.close()
-            self.f = None
+        return
 
     def _elapsed(self) -> float:
         return time.time() - self.start_time
@@ -46,14 +43,22 @@ class OutputSink:
                 out[key] = value
         return out
 
+    def _make_file_path(self) -> Path:
+        t = time.time()
+        base = time.strftime("%Y%m%d_%H%M%S", time.localtime(t))
+        ext = ".json" if self.json_mode else ".txt"
+        path = self.dir / f"{base}{ext}"
+        idx = 1
+        while path.exists():
+            path = self.dir / f"{base}_{idx:03d}{ext}"
+            idx += 1
+        return path
+
     def write_line(
         self,
         text: str,
         prosody_info: Optional[Dict[str, Any]] = None,
     ):
-        if self.f is None:
-            return
-
         include_time = getattr(config, "INCLUDE_TIME_DATA", True)
 
         if prosody_info is None:
@@ -81,5 +86,7 @@ class OutputSink:
         print(f"{ts} {text}", flush=True)
         sys.stdout.flush()
 
-        self.f.write(line + "\n")
-        self.f.flush()
+        file_path = self._make_file_path()
+        with file_path.open("w", encoding="utf-8") as f:
+            f.write(line + "\n")
+            print(file_path)

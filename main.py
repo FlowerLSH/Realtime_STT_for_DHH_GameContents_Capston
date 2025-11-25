@@ -33,8 +33,8 @@ EVENT_MAX_DIST = 3.0
 # 너무 오래된 이벤트는 버리는 기준 (last_committed_time 기준)
 EVENT_EXPIRE_SEC = 5.0
 
-DEBUG_MAIN = True
-DEBUG_ATTACH = True
+DEBUG_MAIN = False
+DEBUG_ATTACH = False
 
 
 def get_seg_time(seg, key: str) -> float:
@@ -244,7 +244,6 @@ def run_pipeline():
                 initial_prompt=committed_text,
                 language=LANGUAGE,
             )
-
             # 단어가 하나도 없을 때 → 이벤트만 출력
             if not segments:
                 tag_only = pop_event_only_tag(
@@ -293,7 +292,7 @@ def run_pipeline():
                     f"last_time={last_committed_time:.2f}"
                 )
 
-            # 원래 있던 prosody 기반 라벨링
+            
             labeler.assign_labels(wav, sr=SAMPLE_RATE, prosody_info=prosody_info)
 
             sink.write_line(text_out, prosody_info=prosody_info)
