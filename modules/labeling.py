@@ -291,25 +291,19 @@ class Labeler:
 
         x = _load_and_preprocess_waveform(input_data, target_sr=SR)
         n = x.numel()
+        if n <= 0:
+            return {}
 
-        for w in words:
-            ws = float(w.get("start", 0.0))
-            we = float(w.get("end", 0.0))
-            center = 0.5 * (ws + we)
-            dur = max(we - ws, 0.0)
+        total_sec = float(n) / float(SR)
+        win_sec = 1.0
 
-            if dur >= WORD_MIN_WIN_SEC:
-                win_start = ws
-                win_end = we
-            else:
-                half = WORD_MIN_WIN_SEC * 0.5
-                win_start = center - half
-                win_end = center + half
+        num_windows = max(1, int(np.ceil(total_sec / win_sec)))
+        window_labels = [self.unknown_label] * num_windows
+        window_confs = [0.0] * num_windows
 
-            if win_start < 0.0:
-                shift = -win_start
-                win_start += shift
-                win_end += shift
+        for idx in range(num_windows):
+            win_start = idx * win_sec
+            win_end = min((idx + 1) * win_sec, total_sec)
 
             start_idx = int(win_start * SR)
             end_idx = int(win_end * SR)
@@ -318,15 +312,42 @@ class Labeler:
 
             chunk = x[start_idx:end_idx]
             if chunk.numel() < int(0.1 * SR):
-                w["speaker"] = self.unknown_label
                 continue
 
             w_idx, w_conf = _score_speaker_from_waveform(chunk)
             if w_conf < self.conf_threshold:
-                w_name = self.unknown_label
-            else:
-                w_name = _display_names[w_idx]
+                continue
 
-            w["speaker"] = w_name
+            window_labels[idx] = _display_names[w_idx]
+            window_confs[idx] = w_conf
+
+        for w in words:
+            ws = float(w.get("start", 0.0))
+            we = float(w.get("end", 0.0))
+            center = 0.5 * (ws + we)
+
+            if center < 0.0:
+                win_idx = 0
+            else:
+                win_idx = int(center // win_sec)
+
+            if win_idx < 0 or win_idx >= num_windows:
+                w["speaker"] = self.unknown_label
+            else:
+                w["speaker"] = window_labels[win_idx]
+
+        prosody_info["speaker_windows"] = []
+        for idx in range(num_windows):
+            win_start = idx * win_sec
+            win_end = min((idx + 1) * win_sec, total_sec)
+            prosody_info["speaker_windows"].append(
+                {
+                    "start": win_start,
+                    "end": win_end,
+                    "speaker": window_labels[idx],
+                    "conf": float(window_confs[idx]),
+                }
+            )
 
         return {}
+
