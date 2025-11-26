@@ -9,7 +9,7 @@ try:
 except Exception:
     librosa = None
 
-DEBUG_PANNS = True
+DEBUG_PANNS = False
 
 
 class PannsEventDetector:
@@ -59,6 +59,19 @@ class PannsEventDetector:
             "scream": self.idx_scream,
         }
 
+        all_target_indices = set()
+        for indices in self.group_indices.values():
+            all_target_indices.update(indices)
+        
+        # 2. 전체 레이블 인덱스 (0부터 len(labels)-1)를 정의합니다.
+        all_indices = set(range(len(names)))
+        
+        # 3. 전체에서 타겟 인덱스를 제외한 나머지를 마스킹 대상으로 정의합니다.
+        #    이 인덱스들에 해당하는 점수는 detect_events에서 0으로 설정됩니다.
+        self.mask_indices = np.array(
+            list(all_indices - all_target_indices), dtype=np.int64
+        )
+
         self.baseline = {g: 0.0 for g in self.group_names}
         self.last_event_time = {g: -1e9 for g in self.group_names}
         self.alpha_baseline = alpha_baseline
@@ -67,11 +80,11 @@ class PannsEventDetector:
         self.target_sr = target_sr
 
         self.config = {
-            "sigh":   {"min_abs": 0.03, "min_delta": 0.01, "cooldown": 5.0},
-            "laugh":  {"min_abs": 0.04, "min_delta": 0.02, "cooldown": 5.0},
-            "clap":   {"min_abs": 0.05, "min_delta": 0.02, "cooldown": 5.0},
-            "cheer":  {"min_abs": 0.05, "min_delta": 0.02, "cooldown": 5.0},
-            "scream": {"min_abs": 0.05, "min_delta": 0.02, "cooldown": 5.0},
+            "sigh":   {"min_abs": 0.007, "min_delta": 0.0005, "cooldown": 5.0},
+            "laugh":  {"min_abs": 0.007, "min_delta": 0.0005, "cooldown": 5.0},
+            "clap":   {"min_abs": 0.007, "min_delta": 0.0005, "cooldown": 5.0},
+            "cheer":  {"min_abs": 0.007, "min_delta": 0.0005, "cooldown": 5.0},
+            "scream": {"min_abs": 0.007, "min_delta": 0.0005, "cooldown": 5.0},
         }
 
     def _resample(self, wav: np.ndarray, sr: int) -> np.ndarray:
@@ -95,7 +108,7 @@ class PannsEventDetector:
         if wav32k.ndim != 1:
             wav32k = wav32k.reshape(-1)
 
-        target_len = int(self.target_sr * 10)
+        target_len = int(self.target_sr * 2)
         n = wav32k.shape[0]
 
         if n <= 0:
@@ -158,6 +171,22 @@ class PannsEventDetector:
         wav32 = self._resample(wav, sr)
         p = self._infer_probs(wav32)
 
+        if self.mask_indices.size > 0:
+            p[self.mask_indices] = 0.0
+
+        N=5
+        if DEBUG_PANNS:
+            top_N_indices = np.argsort(p)[::-1][:N]
+            
+            dbg_list = []
+            for idx in top_N_indices:
+                label = self.labels[idx]
+                score = p[idx]
+                dbg_list.append(f"{label}:{score:.3f}")
+                    
+            dbg_output = " | ".join(dbg_list)
+            print(f"[panns DEBUG: Top {N}] {dbg_output}")
+
         events: List[Tuple[str, float, float]] = []
 
         for g in self.group_names:
@@ -167,16 +196,33 @@ class PannsEventDetector:
 
             score = float(p[idx].max())
 
-            if warmup:
-                self.baseline[g] = (1.0 - self.alpha_baseline) * self.baseline[g] + self.alpha_baseline * score
-                if DEBUG_PANNS:
-                    print(f"[panns] warmup {g} score={score:.3f} base={self.baseline[g]:.3f}")
-                continue
-
+            # ⭐️ 베이스라인 업데이트 및 디버그 출력 로직 수정 ⭐️
+            
+            # 1. 베이스라인 업데이트는 모든 스텝에서 진행합니다.
             self.baseline[g] = (1.0 - self.alpha_baseline) * self.baseline[g] + self.alpha_baseline * score
             b = self.baseline[g]
             cfg = self.config[g]
+            
+            if DEBUG_PANNS:
+                # 2. 모든 스텝에서 베이스라인 및 점수를 출력합니다.
+                #    워밍업 기간인지 아닌지를 표시해줍니다.
+                prefix = "[panns] warmup" if warmup else "[panns] running"
+                
+                # 감지 조건 충족 여부 표시 (True이면 이벤트 발생)
+                is_detected = (score >= cfg["min_abs"]) and (score - b >= cfg["min_delta"]) and (t_now - self.last_event_time[g] >= cfg["cooldown"])
+                
+                print(
+                    f"{prefix} {g}: score={score:.4f} base={b:.4f} "
+                    f"| min_abs={cfg['min_abs']:.4f} delta={score - b:.4f} min_delta={cfg['min_delta']:.4f} "
+                    f"| Detected: {is_detected}"
+                )
+            
+            # 3. 워밍업 기간일 경우, 이벤트 감지 로직(if/continue)을 건너뜁니다.
+            if warmup:
+                continue
 
+            # 4. 워밍업이 끝나면 정상적인 감지 로직을 수행합니다.
+            
             if score < cfg["min_abs"]:
                 continue
             if score - b < cfg["min_delta"]:
@@ -190,6 +236,6 @@ class PannsEventDetector:
             events.append((g, t_now, score))
 
             if DEBUG_PANNS:
-                print(f"[panns] event {g} score={score:.3f} base={b:.3f} t={t_now:.2f}")
+                print(f"[panns] EVENT DETECTED: {g} score={score:.4f} base={b:.4f} t={t_now:.2f}")
 
         return events
