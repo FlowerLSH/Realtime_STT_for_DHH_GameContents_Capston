@@ -9,6 +9,7 @@ from config import (
     STEP_SEC,
     CHUNK_MS,
     OUT_TXT,
+    LABEL_THRESHOLD,
 )
 
 from audio_io import AudioStream
@@ -20,7 +21,13 @@ from modules.hotwords import build_hotword_list
 from modules.pannsDetector import PannsEventDetector
 
 import time
+import webbrowser
+import os
+import re
+from collections import Counter
 from typing import List, Tuple
+
+from modules.subtitle import start_subtitle_server, send_subtitle
 
 
 PANN_CHECKPOINT = r".\panns_data\Cnn14_mAP=0.431.pth"
@@ -28,6 +35,43 @@ PANN_CHECKPOINT = r".\panns_data\Cnn14_mAP=0.431.pth"
 DEBUG_MAIN = False
 DEBUG_ATTACH = False
 
+def clean_and_split_text(text: str) -> List[str]:
+    # 1. 특수 기호(。, 쉼표, 온점 등)를 제거하고 공백으로 대체
+    # 'It's' 같은 축약어는 유지하기 위해 \w+ 패턴은 그대로 둡니다.
+    cleaned_text = re.sub(r'[^\w\s\']', ' ', text)
+    
+    # 2. 공백을 기준으로 단어를 분리하고 빈 문자열 제거
+    words = [word for word in cleaned_text.lower().split() if word]
+    
+    return words
+
+def is_error(full_text: str, top_k: int = 2, max_ratio: float = 0.8) -> bool:
+    """
+    텍스트 내에서 상위 K개의 토큰이 전체 텍스트의 일정 비율(max_ratio) 이상을 
+    차지하는 경우 (즉, 반복 루프 또는 오염)를 감지합니다.
+    """
+    words = clean_and_split_text(full_text)
+    if not words:
+        return False
+        
+    total_words = len(words)
+    
+    # 1. 단어 빈도수 계산
+    word_counts = Counter(words)
+    
+    # 2. 가장 흔한 상위 K개 단어의 빈도 합산
+    most_common = word_counts.most_common(top_k)
+    top_k_count = sum(count for word, count in most_common)
+    
+    # 3. 비율 계산
+    repetition_ratio = top_k_count / total_words
+    
+    # 4. 비율이 임계값을 초과하면 오염(반복 루프)으로 판단
+    if repetition_ratio >= max_ratio:
+        print(f"[Warning] High Repetition Ratio ({repetition_ratio:.2f}): Top {top_k} words dominate the text.")
+        return True
+        
+    return False
 
 def attach_events_to_words(
     segments,
@@ -93,6 +137,7 @@ def attach_events_to_words(
 
 
 def run_pipeline():
+    start_subtitle_server(host="localhost", port=8765)
     hotwords = build_hotword_list()
     print(f"[hotwords] loaded {len(hotwords)} items")
     print(hotwords)
@@ -112,7 +157,7 @@ def run_pipeline():
     )
 
     prosody = ProsodyAnalyzer(sample_rate=SAMPLE_RATE)
-    labeler = Labeler()
+    labeler = Labeler(conf_threshold = LABEL_THRESHOLD)
     sink = OutputSink(OUT_TXT)
     panns = PannsEventDetector(checkpoint_path=PANN_CHECKPOINT, device="cpu")
 
@@ -123,10 +168,14 @@ def run_pipeline():
     last_committed_time = 0.0
 
     audio.start()
-    print(f"[ready] streaming... window={WINDOW_SEC}s step={STEP_SEC}s")
 
+    print(f"[ready] streaming... window={WINDOW_SEC}s step={STEP_SEC}s")
+    
     try:
+
+        jid = 0
         while True:
+            jid += 1
             audio.pump()
             now_wall = time.time()
             if now_wall - last_step_time < STEP_SEC:
@@ -162,6 +211,20 @@ def run_pipeline():
                 language=LANGUAGE,
             )
 
+
+
+            if is_error(full_text):
+                record = {"id": jid, "time": time.time(), "text": "STT Error Occured. Skip this Window.", "prosody":{'words' : []}}
+                print("STT 텍스트 오염 감지")
+                print(full_text)
+                print("Dummy 자막을 전송합니다.")
+                try:
+                    send_subtitle(record)
+                except Exception as e:
+                    # 자막 전송 실패해도 메인 파이프라인은 죽지 않도록
+                    print(f"[ws] send_subtitle error: {e}", file=sys.stderr)
+                committed_text = " "
+                continue
             if not segments:
                 if events:
                     tags = []
@@ -190,7 +253,14 @@ def run_pipeline():
 
             sink.write_line(text_out, prosody_info=prosody_info)
 
-            committed_text += " " + full_text
+            committed_text = " " + full_text
+
+            record = {"id": jid, "time": time.time(), "text": text_out, "prosody":prosody_info}
+            try:
+                send_subtitle(record)
+            except Exception as e:
+                # 자막 전송 실패해도 메인 파이프라인은 죽지 않도록
+                print(f"[ws] send_subtitle error: {e}", file=sys.stderr)
 
     except KeyboardInterrupt:
         pass
@@ -200,4 +270,20 @@ def run_pipeline():
 
 
 if __name__ == "__main__":
-    run_pipeline()
+    html_file_name = "overlay_words.html"
+    html_path = os.path.abspath(html_file_name)
+
+    browser_process = None
+    try:
+        print(f"[overlay] Opening browser: {html_path}")
+        webbrowser.open_new_tab(f"file:///{html_path}")
+
+        run_pipeline()
+
+    except KeyboardInterrupt:
+        print("\n[stop] Pipeline interrupted by user.")
+    except Exception as e:
+        print(f"\n[error] An unexpected error occurred: {e}")
+    finally:
+        # 3. 🛑 브라우저 자동 종료 (⚠️ 제약 사항 있음)
+        print("[cleanup] Stopping services...")

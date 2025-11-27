@@ -172,9 +172,9 @@ class ProsodyAnalyzer:
                     "start": ws,
                     "end": we,
                     "text": text,
-                    "loudness": loudness,
-                    "valence": emo_vals["valence"],
-                    "arousal": emo_vals["arousal"],
+                    "loudness": min(max(loudness, 0.0), 1.0),
+                    "valence": min(max(emo_vals["valence"], 0.0), 1.0),
+                    "arousal": min(max(emo_vals["arousal"], 0.0), 1.0),
                 }
             )
 

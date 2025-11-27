@@ -1,0 +1,462 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <title>Word-level Prosody Overlay</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+
+  <!-- Inter variable font -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@100..900&display=swap" rel="stylesheet">
+
+  <style>
+    html, body {
+      margin: 0;
+      padding: 0;
+      width: 100%;
+      height: 100%;
+      background: transparent;
+      overflow: hidden;
+      font-family: "Inter", system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+
+    .overlay-root {
+      position: fixed;
+      inset: 0;
+      display: flex;
+      align-items: flex-end;
+      justify-content: center;
+      padding: 4vh 5vw;
+      box-sizing: border-box;
+      pointer-events: none;
+    }
+
+    /* 여러 개 말풍선을 쌓는 스택 컨테이너 */
+    .subtitle-stack {
+      width: 100%;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 0.6rem;
+    }
+
+    .subtitle-wrapper {
+      max-width: 90vw;
+      background: rgba(0, 0, 0, 0.55);
+      border-radius: 18px;
+      padding: 1.0rem 1.6rem;
+      backdrop-filter: blur(6px);
+      box-shadow: 0 12px 30px rgba(0, 0, 0, 0.45);
+      display: flex;
+      flex-direction: column;
+      gap: 0.35rem;
+      opacity: 0;
+      transform: translateY(8px);
+      transition: opacity 0.18s ease-out, transform 0.18s ease-out;
+    }
+
+    .subtitle-visible {
+      opacity: 1;
+      transform: translateY(0);
+    }
+
+    .subtitle-lines {
+      display: flex;
+      flex-direction: column;
+      gap: 0.15rem;
+    }
+
+    .subtitle-line {
+      display: flex;
+      align-items: baseline;
+      justify-content: center;
+      gap: 0.35rem;
+      flex-wrap: wrap;
+    }
+
+    .subtitle-line-speaker {
+      font-size: 1.5rem;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+      opacity: 0.8;
+      color: #f0f0f0;
+      flex-shrink: 0;
+    }
+
+    .subtitle-line-words {
+      line-height: 1.25;
+      text-align: center;
+      display: inline-flex;
+      flex-wrap: wrap;
+      justify-content: center;
+      align-items: flex-end;
+    }
+
+    .subtitle-line-words .word {
+      white-space: pre; /* " today" 같은 앞 공백 유지 */
+      transition:
+        font-weight 0.08s ease-out,
+        font-size 0.08s ease-out,
+        color 0.08s ease-out;
+      will-change: font-weight, font-size, color;
+    }
+  </style>
+</head>
+<body>
+  <div class="overlay-root">
+    <div class="subtitle-stack" id="subtitle-stack"></div>
+  </div>
+
+  <script>
+    const WS_URL = "ws://localhost:8765";
+    const DEMO_MODE = false;   // 실사용: false, 테스트: true
+    const MAX_ITEMS = 3;       // 최대 유지 개수
+
+    const stackEl = document.getElementById("subtitle-stack");
+
+    function clamp(x, min, max) {
+      return Math.min(Math.max(x, min), max);
+    }
+
+    function lerp(a, b, t) {
+      return a + (b - a) * t;
+    }
+
+    // 단어 하나의 prosody -> weight / size / color 매핑
+    function wordProsodyToStyle(word) {
+      const loud    = clamp(typeof word.loudness === "number" ? word.loudness : 0.5, 0, 1);
+      const arousal = clamp(typeof word.arousal  === "number" ? word.arousal  : 0.5, 0, 1);
+      const valence = clamp(typeof word.valence  === "number" ? word.valence  : 0.5, 0, 1);
+
+      const loudShaped    = Math.pow(loud, 0.7);    // 0.7 < 1 → low쪽 보정
+      const arousalShaped = Math.pow(arousal, 1.3); // 1.3 > 1 → high쪽 강조
+
+      const weight = Math.round(lerp(350, 900, loudShaped));
+      const sizePx = lerp(20, 40, arousalShaped);   // 단어별 크기
+
+      const hue = lerp(210, 40, valence);           // 파랑 → 오렌지
+      const saturation = lerp(35, 90, arousalShaped);
+      const lightness = 88;
+      const color = `hsl(${hue}, ${saturation}%, ${lightness}%)`;
+
+      return { weight, sizePx, color };
+    }
+
+    function normalizeSpeakerName(s) {
+      if (!s) return "";
+      return s;
+    }
+
+    // speaker가 바뀔 때마다 끊어서 그룹화
+    function groupWordsBySpeaker(words) {
+      const groups = [];
+      let currentSpeaker = null;
+      let currentWords = [];
+
+      for (const w of words) {
+        const s = normalizeSpeakerName(w.speaker || "");
+        if (currentSpeaker === null) {
+          currentSpeaker = s;
+          currentWords.push(w);
+          continue;
+        }
+        if (s === currentSpeaker) {
+          currentWords.push(w);
+        } else {
+          groups.push({ speaker: currentSpeaker, words: currentWords });
+          currentSpeaker = s;
+          currentWords = [w];
+        }
+      }
+      if (currentWords.length > 0) {
+        groups.push({ speaker: currentSpeaker, words: currentWords });
+      }
+      return groups;
+    }
+
+    // 한 payload(utterance)를 위한 말풍선 DOM 생성
+    function createSubtitleElement(payload) {
+      const prosody = payload.prosody || {};
+      const words = Array.isArray(prosody.words) ? prosody.words : [];
+
+      const wrapper = document.createElement("div");
+      wrapper.className = "subtitle-wrapper";
+
+      const lines = document.createElement("div");
+      lines.className = "subtitle-lines";
+      wrapper.appendChild(lines);
+
+      if (words.length > 0) {
+        const groups = groupWordsBySpeaker(words);
+
+        for (const g of groups) {
+          const line = document.createElement("div");
+          line.className = "subtitle-line";
+
+          const speakerSpan = document.createElement("span");
+          speakerSpan.className = "subtitle-line-speaker";
+          speakerSpan.textContent = g.speaker || "";
+          if (!g.speaker) {
+            speakerSpan.style.display = "none";
+          }
+
+          const wordsSpan = document.createElement("span");
+          wordsSpan.className = "subtitle-line-words";
+
+          for (const w of g.words) {
+            const span = document.createElement("span");
+            span.className = "word";
+            span.textContent = w.text != null ? w.text : " ";
+
+            const style = wordProsodyToStyle(w);
+            span.style.fontWeight = String(style.weight);
+            span.style.fontSize = style.sizePx + "px";
+            span.style.color = style.color;
+
+            wordsSpan.appendChild(span);
+          }
+
+          line.appendChild(speakerSpan);
+          line.appendChild(wordsSpan);
+          lines.appendChild(line);
+        }
+      } else {
+        // fallback: words 없으면 그냥 한 줄짜리 텍스트
+        const line = document.createElement("div");
+        line.className = "subtitle-line";
+
+        const wordsSpan = document.createElement("span");
+        wordsSpan.className = "subtitle-line-words";
+
+        const span = document.createElement("span");
+        span.className = "word";
+        span.textContent = payload.text || "";
+        span.style.fontWeight = "500";
+        span.style.fontSize = "28px";
+        span.style.color = "#ffffff";
+
+        wordsSpan.appendChild(span);
+        line.appendChild(wordsSpan);
+        lines.appendChild(line);
+      }
+
+      // 살짝 딜레이 후 visible class 붙여서 fade-in
+      requestAnimationFrame(() => {
+        wrapper.classList.add("subtitle-visible");
+      });
+
+      return wrapper;
+    }
+
+    // 새로운 자막 하나 push: 아래에 추가, 위로 밀어 올리고 3개만 유지
+    function pushSubtitle(payload) {
+      if (!payload) return;
+
+      const el = createSubtitleElement(payload);
+      stackEl.appendChild(el);
+
+      // 최대 개수 넘으면 가장 위(첫 번째) 제거
+      while (stackEl.children.length > MAX_ITEMS) {
+        stackEl.removeChild(stackEl.firstChild);
+      }
+    }
+
+    // ----------------- 데모용 샘플 10개 -----------------
+
+    const demoPayloads = [
+      {
+        id: "utt_01",
+        time: 0,
+        text: "today IG finding themselves",
+        prosody: {
+          words: [
+            { text: " today",  speaker: "ATLUS",   loudness: 0.35, valence: 0.55, arousal: 0.30 },
+            { text: " IG",     speaker: "ATLUS",   loudness: 0.42, valence: 0.60, arousal: 0.35 },
+            { text: " finding",speaker: "ATLUS",   loudness: 0.40, valence: 0.52, arousal: 0.32 },
+            { text: " themselves", speaker: "ATLUS", loudness: 0.38, valence: 0.50, arousal: 0.28 }
+          ]
+        }
+      },
+      {
+        id: "utt_02",
+        time: 1,
+        text: "a little bit on the back foot",
+        prosody: {
+          words: [
+            { text: " a",         speaker: "ATLUS", loudness: 0.30, valence: 0.48, arousal: 0.25 },
+            { text: " little",    speaker: "ATLUS", loudness: 0.32, valence: 0.46, arousal: 0.27 },
+            { text: " bit",       speaker: "ATLUS", loudness: 0.34, valence: 0.45, arousal: 0.30 },
+            { text: " on",        speaker: "ATLUS", loudness: 0.33, valence: 0.44, arousal: 0.28 },
+            { text: " the",       speaker: "ATLUS", loudness: 0.36, valence: 0.42, arousal: 0.32 },
+            { text: " back",      speaker: "ATLUS", loudness: 0.45, valence: 0.40, arousal: 0.40 },
+            { text: " foot",      speaker: "ATLUS", loudness: 0.48, valence: 0.38, arousal: 0.42 }
+          ]
+        }
+      },
+      {
+        id: "utt_03",
+        time: 2,
+        text: "when it comes to the tempo",
+        prosody: {
+          words: [
+            { text: " when",  speaker: "ATLUS", loudness: 0.40, valence: 0.50, arousal: 0.35 },
+            { text: " it",    speaker: "ATLUS", loudness: 0.38, valence: 0.48, arousal: 0.33 },
+            { text: " comes", speaker: "ATLUS", loudness: 0.42, valence: 0.52, arousal: 0.37 },
+            { text: " to",    speaker: "ATLUS", loudness: 0.41, valence: 0.49, arousal: 0.35 },
+            { text: " the",   speaker: "ATLUS", loudness: 0.40, valence: 0.47, arousal: 0.34 },
+            { text: " tempo", speaker: "ATLUS", loudness: 0.55, valence: 0.58, arousal: 0.55 }
+          ]
+        }
+      },
+      {
+        id: "utt_04",
+        time: 3,
+        text: "that was a terrible mistake",
+        prosody: {
+          words: [
+            { text: " that",     speaker: "ATLUS",   loudness: 0.60, valence: 0.20, arousal: 0.60 },
+            { text: " was",      speaker: "ATLUS",   loudness: 0.65, valence: 0.18, arousal: 0.65 },
+            { text: " a",        speaker: "ATLUS",   loudness: 0.58, valence: 0.22, arousal: 0.55 },
+            { text: " terrible", speaker: "ATLUS",   loudness: 0.80, valence: 0.12, arousal: 0.80 },
+            { text: " mistake",  speaker: "ATLUS",   loudness: 0.78, valence: 0.15, arousal: 0.78 }
+          ]
+        }
+      },
+      {
+        id: "utt_05",
+        time: 4,
+        text: "here comes the engage from IG",
+        prosody: {
+          words: [
+            { text: " here",    speaker: "ATLUS",   loudness: 0.55, valence: 0.70, arousal: 0.65 },
+            { text: " comes",   speaker: "ATLUS",   loudness: 0.62, valence: 0.75, arousal: 0.72 },
+            { text: " the",     speaker: "ATLUS",   loudness: 0.64, valence: 0.78, arousal: 0.75 },
+            { text: " engage",  speaker: "ATLUS",   loudness: 0.85, valence: 0.82, arousal: 0.90 },
+            { text: " from",    speaker: "ATLUS",   loudness: 0.80, valence: 0.79, arousal: 0.85 },
+            { text: " IG",      speaker: "ATLUS",   loudness: 0.82, valence: 0.81, arousal: 0.88 }
+          ]
+        }
+      },
+      {
+        id: "utt_06",
+        time: 5,
+        text: "the damage is absolutely massive",
+        prosody: {
+          words: [
+            { text: " the",       speaker: "VALDES", loudness: 0.70, valence: 0.75, arousal: 0.80 },
+            { text: " damage",    speaker: "VALDES", loudness: 0.85, valence: 0.82, arousal: 0.92 },
+            { text: " is",        speaker: "VALDES", loudness: 0.80, valence: 0.80, arousal: 0.88 },
+            { text: " absolutely",speaker: "VALDES", loudness: 0.88, valence: 0.84, arousal: 0.96 },
+            { text: " massive",   speaker: "VALDES", loudness: 0.90, valence: 0.86, arousal: 1.00 }
+          ]
+        }
+      },
+      {
+        id: "utt_07",
+        time: 6,
+        text: "no way they survive that one",
+        prosody: {
+          words: [
+            { text: " no",      speaker: "VALDES", loudness: 0.75, valence: 0.25, arousal: 0.78 },
+            { text: " way",     speaker: "VALDES", loudness: 0.78, valence: 0.30, arousal: 0.82 },
+            { text: " they",    speaker: "VALDES", loudness: 0.70, valence: 0.28, arousal: 0.75 },
+            { text: " survive", speaker: "VALDES", loudness: 0.72, valence: 0.26, arousal: 0.77 },
+            { text: " that",    speaker: "VALDES", loudness: 0.68, valence: 0.24, arousal: 0.70 },
+            { text: " one",     speaker: "VALDES", loudness: 0.65, valence: 0.23, arousal: 0.68 }
+          ]
+        }
+      },
+      {
+        id: "utt_08",
+        time: 7,
+        text: "ATLUS: calm line then VALDES jumps in",
+        prosody: {
+          words: [
+            { text: " just",    speaker: "ATLUS",  loudness: 0.35, valence: 0.55, arousal: 0.30 },
+            { text: " setting", speaker: "ATLUS",  loudness: 0.38, valence: 0.56, arousal: 0.32 },
+            { text: " the",     speaker: "ATLUS",  loudness: 0.40, valence: 0.58, arousal: 0.35 },
+            { text: " stage",   speaker: "ATLUS",  loudness: 0.42, valence: 0.60, arousal: 0.36 },
+            { text: " and",     speaker: "VALDES", loudness: 0.70, valence: 0.78, arousal: 0.80 },
+            { text: " here",    speaker: "VALDES", loudness: 0.82, valence: 0.82, arousal: 0.90 },
+            { text: " he",      speaker: "VALDES", loudness: 0.80, valence: 0.80, arousal: 0.88 },
+            { text: " goes",    speaker: "VALDES", loudness: 0.85, valence: 0.83, arousal: 0.94 }
+          ]
+        }
+      },
+      {
+        id: "utt_09",
+        time: 8,
+        text: "resetting taking a breath",
+        prosody: {
+          words: [
+            { text: " resetting", speaker: "ATLUS", loudness: 0.40, valence: 0.60, arousal: 0.30 },
+            { text: " taking",    speaker: "ATLUS", loudness: 0.38, valence: 0.58, arousal: 0.28 },
+            { text: " a",         speaker: "ATLUS", loudness: 0.35, valence: 0.57, arousal: 0.25 },
+            { text: " breath",    speaker: "ATLUS", loudness: 0.36, valence: 0.59, arousal: 0.26 }
+          ]
+        }
+      },
+      {
+        id: "utt_10",
+        time: 9,
+        text: "what a finish to this series",
+        prosody: {
+          words: [
+            { text: " what",   speaker: "VALDES", loudness: 0.80, valence: 0.85, arousal: 0.88 },
+            { text: " a",      speaker: "VALDES", loudness: 0.78, valence: 0.83, arousal: 0.84 },
+            { text: " finish", speaker: "VALDES", loudness: 0.92, valence: 0.88, arousal: 0.98 },
+            { text: " to",     speaker: "VALDES", loudness: 0.82, valence: 0.82, arousal: 0.90 },
+            { text: " this",   speaker: "VALDES", loudness: 0.80, valence: 0.80, arousal: 0.88 },
+            { text: " series", speaker: "VALDES", loudness: 0.88, valence: 0.86, arousal: 0.96 }
+          ]
+        }
+      }
+    ];
+
+    function runDemo() {
+      let idx = 0;
+      const total = demoPayloads.length;
+
+      function step() {
+        if (idx >= total) return;
+        pushSubtitle(demoPayloads[idx]);
+        idx += 1;
+        if (idx < total) {
+          setTimeout(step, 1000); // 1초 간격
+        }
+      }
+
+      step();
+    }
+
+    // ----------------- WebSocket 모드 -----------------
+
+    function connect() {
+      const ws = new WebSocket(WS_URL);
+
+      ws.onmessage = (event) => {
+        try {
+          const payload = JSON.parse(event.data);
+          pushSubtitle(payload);
+        } catch (_) {
+          // invalid json은 그냥 무시
+        }
+      };
+
+      ws.onclose = () => {
+        // 자동 재연결, 로그는 찍지 않음
+        setTimeout(connect, 1000);
+      };
+    }
+
+    // ----------------- 모드 선택 -----------------
+
+    if (DEMO_MODE) {
+      runDemo();
+    } else {
+      connect();
+    }
+  </script>
+</body>
+</html>
