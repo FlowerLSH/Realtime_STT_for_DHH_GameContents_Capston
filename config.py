@@ -13,7 +13,7 @@ STEP_SEC = 5.0
 
 OUT_TXT = "./logs"
 
-LABEL_THRESHOLD = 0.4
+LABEL_THRESHOLD = 0.5
 
 CHAMP_THRESHOLD = 0.9
 RETRY_MAX = 1
@@ -23,7 +23,7 @@ MIN_OCR_SCORE = 0.65
 CHAMP_RETRY_WAIT = 5.0
 
 DEFAULT_HOTWORDS_TXT = r"C:\Capston\default_hotwords.txt"
-USE_SCREEN_OCR_HOTWORDS = True
+USE_SCREEN_OCR_HOTWORDS = False
 SCREEN_OCR_INCLUDE_SKILLS = False
 
 EVENT_PRIORITY = {
@@ -34,10 +34,10 @@ EVENT_PRIORITY = {
     "sigh": 1,
 }
 
-EVENT_TAGS = {
-    "sigh": "(한숨) ",
-    "laugh": "(웃음) ",
-    "clap": "(박수) ",
-    "cheer": "(환호) ",
-    "scream": "(비명) ",
-}
+# EVENT_TAGS = {
+#     "sigh": "(한숨) ",
+#     "laugh": "(웃음) ",
+#     "clap": "(박수) ",
+#     "cheer": "(환호) ",
+#     "scream": "(비명) ",
+# }
