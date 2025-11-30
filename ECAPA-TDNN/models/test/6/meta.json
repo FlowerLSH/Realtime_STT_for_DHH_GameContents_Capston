@@ -1,8 +1,8 @@
 {
   "speaker_id": "6",
-  "num_files": 3,
-  "num_frames": 20,
-  "num_prototypes": 2,
+  "num_files": 9,
+  "num_frames": 85,
+  "num_prototypes": 3,
   "win_sec": 2.0,
   "hop_sec": 0.5,
   "target_rms": 0.04,

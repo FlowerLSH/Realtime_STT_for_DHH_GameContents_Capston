@@ -1,7 +1,7 @@
 {
-  "speaker_id": "2",
-  "num_files": 10,
-  "num_frames": 97,
+  "speaker_id": "10",
+  "num_files": 7,
+  "num_frames": 67,
   "num_prototypes": 3,
   "win_sec": 2.0,
   "hop_sec": 0.5,

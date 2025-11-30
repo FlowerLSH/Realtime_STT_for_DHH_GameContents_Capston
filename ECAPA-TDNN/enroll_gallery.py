@@ -6,7 +6,7 @@ from sklearn.cluster import KMeans
 from speechbrain.pretrained import EncoderClassifier
 
 # ================= 설정 =================
-PROJECT_ROOT = r"C:\Nemo\ECAPA-TDNN"
+PROJECT_ROOT = r"C:\Capston\ECAPA-TDNN"
 ENROLL_ROOT  = str(Path(PROJECT_ROOT) / "test")   # 내부에 화자ID 폴더별 WAV
 GALLERY_DIR  = str(Path(PROJECT_ROOT) / "models" / "test")
 MODEL_DIR    = str(Path(PROJECT_ROOT) / "models" / "ecapa_vox")
