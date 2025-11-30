@@ -26,6 +26,8 @@ DEFAULT_HOTWORDS_TXT = r"C:\Capston\default_hotwords.txt"
 USE_SCREEN_OCR_HOTWORDS = False
 SCREEN_OCR_INCLUDE_SKILLS = False
 
+CASTER_PRESET_JSON = r"C:\Capston\ECAPA-TDNN\caster_presets_word_prosody.json"
+
 EVENT_PRIORITY = {
     "scream": 5,
     "cheer": 4,

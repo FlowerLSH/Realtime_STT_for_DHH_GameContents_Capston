@@ -251,6 +251,8 @@ def run_pipeline():
 
             labeler.assign_labels(wav, sr=SAMPLE_RATE, prosody_info=prosody_info)
 
+            prosody.apply_presets_in_place(prosody_info)   
+
             sink.write_line(text_out, prosody_info=prosody_info)
 
             committed_text = " " + full_text
