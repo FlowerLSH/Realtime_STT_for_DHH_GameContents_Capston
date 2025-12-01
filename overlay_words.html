@@ -129,14 +129,22 @@
       const arousal = clamp(typeof word.arousal  === "number" ? word.arousal  : 0.5, 0, 1);
       const valence = clamp(typeof word.valence  === "number" ? word.valence  : 0.5, 0, 1);
 
-      const loudShaped    = Math.pow(loud, 0.7);    // 0.7 < 1 → low쪽 보정
-      const arousalShaped = Math.pow(arousal, 1.3); // 1.3 > 1 → high쪽 강조
-
-      const weight = Math.round(lerp(350, 900, loudShaped));
-      const sizePx = lerp(20, 40, arousalShaped);   // 단어별 크기
-
-      const hue = lerp(210, 40, valence);           // 파랑 → 오렌지
-      const saturation = lerp(35, 90, arousalShaped);
+      // 1. ✨ 민감도 강화 (핵심): 지수를 1.5로 설정하여 높은 값에서 급격한 변화 유도
+      // (기존 loudShaped: 0.7, arousalShaped: 1.3)
+      const SHAPING_EXP = 1.5; 
+      
+      const loudShaped    = Math.pow(loud, SHAPING_EXP);
+      const arousalShaped = Math.pow(arousal, SHAPING_EXP);
+      
+      // 2. 굵기(Weight) 범위 확대: 350 -> 100으로 최소 굵기 감소
+      const weight = Math.round(lerp(10, 700, loudShaped));
+      
+      // 3. 크기(Size) 범위 확대: 40px -> 50px으로 최대 크기 증가
+      const sizePx = lerp(20, 40, arousalShaped);
+      
+      // 4. 채도(Saturation) 범위 확대: 90% -> 100%으로 최대 채도 증가
+      const hue = lerp(210, 40, valence); 
+      const saturation = lerp(10, 100, arousalShaped);
       const lightness = 88;
       const color = `hsl(${hue}, ${saturation}%, ${lightness}%)`;
 
