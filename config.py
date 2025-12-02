@@ -23,7 +23,7 @@ MIN_OCR_SCORE = 0.65
 CHAMP_RETRY_WAIT = 5.0
 
 DEFAULT_HOTWORDS_TXT = r"C:\Capston\default_hotwords.txt"
-USE_SCREEN_OCR_HOTWORDS = False
+USE_SCREEN_OCR_HOTWORDS = True
 SCREEN_OCR_INCLUDE_SKILLS = False
 
 CASTER_PRESET_JSON = r"C:\Capston\ECAPA-TDNN\caster_presets_word_prosody.json"
