@@ -130,7 +130,7 @@ def attach_events_to_words(
                 wobj = segments[0].words[target_idx]
                 cur = str(getattr(wobj, "word", ""))
                 setattr(wobj, "word", tag_str + " " + cur)
-
+    
     words_list = [str(w.word) for w in segments[0].words]
     full_text = " ".join(words_list).strip()
 
@@ -204,7 +204,7 @@ def run_pipeline():
                 t_center = stream_time - 0.5
 
             events = panns.detect_events(seg_wav, sr=SAMPLE_RATE, t_now=t_center)
-
+            
             if DEBUG_MAIN and events:
                 dbg = ", ".join(f"{e[0]}:{e[2]:.3f}@{e[1]:.2f}" for e in events)
                 print(f"[main] panns events: {dbg}")
@@ -214,8 +214,6 @@ def run_pipeline():
                 initial_prompt=committed_text,
                 language=LANGUAGE,
             )
-
-
 
             if is_error(full_text):
                 record = {"id": jid, "time": time.time(), "text": "STT Error Occured. Skip this Window.", "prosody":{'words' : []}}
@@ -248,7 +246,7 @@ def run_pipeline():
                 events=events,
                 last_committed_time=last_committed_time,
             )
-
+            print("hi")
             prosody_info = prosody.analyze(wav, segments)
 
             text_out = full_text

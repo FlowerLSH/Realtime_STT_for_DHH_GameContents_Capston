@@ -2,6 +2,8 @@
 
 MODEL_NAME = "finetuned_model_v4.nemo"  
 STT_BACKEND_TYPE = "nemo_hotword_punct"  
+# MODEL_NAME = "large-v3-turbo"  
+# STT_BACKEND_TYPE = "whisper_faster"  
 DEVICE = "cuda"
 COMPUTE_TYPE = "float16"
 LANGUAGE = "en"

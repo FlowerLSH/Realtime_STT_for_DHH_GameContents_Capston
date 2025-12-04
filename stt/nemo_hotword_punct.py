@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Dict, List, Tuple, Optional
 
@@ -8,23 +9,40 @@ import soundfile as sf
 import torch
 
 import nemo.collections.asr as nemo_asr
-from nemo.collections.nlp.models import PunctuationCapitalizationModel
+from deepmultilingualpunctuation import PunctuationModel
 
 from .base import STTBackend
+
+
+@dataclass
+class WordLike:
+    word: str
+    start: float
+    end: float
+    probability: float = 1.0
+
+
+@dataclass
+class SegmentLike:
+    id: int
+    start: float
+    end: float
+    text: str
+    words: List[WordLike] | None = None
 
 
 class NemoHotwordPunctBackend(STTBackend):
     def __init__(
         self,
-        model_name: str,                 # [설정 포인트] 사용할 NeMo ASR 모델 이름 또는 .nemo 경로
-        device: str = "cuda",                # [설정 포인트] "cuda" / "cpu"
-        compute_type: str = "float16",       # [설정 포인트] "float16" / "bfloat16" / "float32"
+        model_name: str,
+        device: str = "cuda",
+        compute_type: str = "float16",
         default_language: Optional[str] = None,
-        hotwords: Optional[Dict[str, float]] = None,  # [설정 포인트] {"단어": weight} 형태로 넘겨줄 수 있음
-        use_punctuation: bool = True,        # [설정 포인트] 문장부호/대문자 복원 사용할지 여부
-        punct_model_name: Optional[str] = None,  # [설정 포인트] NeMo punctuation 모델 이름
+        hotwords: Optional[Dict[str, float]] = None,
+        use_punctuation: bool = True,
+        punct_model_name: Optional[str] = None,
     ):
-        # ASR 모델 로드 (파일 경로 or from_pretrained 이름 둘 다 허용)
+        # ASR model
         if Path(model_name).is_file():
             self.asr_model = nemo_asr.models.ASRModel.restore_from(
                 restore_path=model_name
@@ -43,7 +61,7 @@ class NemoHotwordPunctBackend(STTBackend):
         self.default_language = default_language
         self.hotwords: Dict[str, float] = hotwords or {}
 
-        # [설정 포인트] 연산 dtype (성능/안정성 트레이드오프)
+        # dtype
         if compute_type in ("float16", "fp16"):
             self.autocast_dtype = torch.float16
         elif compute_type in ("bfloat16", "bf16"):
@@ -51,17 +69,27 @@ class NemoHotwordPunctBackend(STTBackend):
         else:
             self.autocast_dtype = torch.float32
 
+        # HF punctuation model
         self.use_punctuation = use_punctuation
-        self.punct_model = None
-        if self.use_punctuation and punct_model_name:
-            self.punct_model = PunctuationCapitalizationModel.from_pretrained(
-                 punct_model_name
-            )
-            self.punct_model.to(self.device)
-            self.punct_model.eval()
+        self.punct_model: Optional[PunctuationModel] = None
+
+        if self.use_punctuation:
+            try:
+                # HF repo id 형태("author/model")만 그대로 사용
+                if punct_model_name and "/" in punct_model_name:
+                    self.punct_model = PunctuationModel(model=punct_model_name)
+                else:
+                    # 기본 멀티랭 모델
+                    self.punct_model = PunctuationModel()
+            except Exception as e:
+                print(
+                    f"[NemoHotwordPunctBackend] WARNING: "
+                    f"punctuation model load failed ({e}). Disabling punctuation."
+                )
+                self.punct_model = None
+                self.use_punctuation = False
 
     def set_hotwords(self, hotwords: Dict[str, float]) -> None:
-        # [설정 포인트] 런타임에 hotword dict를 교체할 때 사용
         self.hotwords = hotwords or {}
 
     def _run_nemo_transcribe(
@@ -69,73 +97,67 @@ class NemoHotwordPunctBackend(STTBackend):
         wav: np.ndarray,
         sampling_rate: int,
     ):
-        # [설정 포인트] 필요하면 sampling_rate를 config.SAMPLE_RATE에 맞게 조정
+        """
+        NeMo ASRModel.transcribe() wrapper.
+        Returns list of Hypothesis.
+        """
         tmp_path = Path("tmp_nemo_infer.wav")
         sf.write(tmp_path, wav, sampling_rate)
 
-        # ↓↓↓ NeMo 디코더 관련 설정을 조정하는 구간 ↓↓↓
-        decoding_cfg = getattr(self.asr_model, "cfg", None)
-        if decoding_cfg is not None and hasattr(decoding_cfg, "decoding"):
-            decoding_cfg = decoding_cfg.decoding
-
-            # [설정 포인트] hotword 적용 / weight 튜닝
+        cfg = getattr(self.asr_model, "cfg", None)
+        if cfg is not None and hasattr(cfg, "decoding"):
+            # hotwords (if supported)
             if self.hotwords:
                 try:
-                    decoding_cfg.hotwords = list(self.hotwords.keys())
-                    decoding_cfg.hotword_weight = 2.0  # hotword boost 강도
+                    cfg.decoding.hotwords = list(self.hotwords.keys())
+                    cfg.decoding.hotword_weight = 2.0
                 except Exception:
                     pass
 
-            # [설정 포인트] 단어 단위 timestamp가 필요하면 True 유지
+            # timestamps (if supported)
             try:
-                decoding_cfg.preserve_alignments = True
+                cfg.decoding.preserve_alignments = True
+                cfg.decoding.compute_timestamps = True
             except Exception:
                 pass
 
-            try:
-                with self.asr_model.decoding.override(decoding_cfg):
-                    hyps = self.asr_model.transcribe(
-                        [str(tmp_path)],
-                        return_hypotheses=True,
-                    )
-            finally:
-                tmp_path.unlink(missing_ok=True)
-                return hyps
+        try:
+            hyps = self.asr_model.transcribe(
+                [str(tmp_path)],
+                return_hypotheses=True,
+                timestamps=True,
+            )
+        finally:
+            tmp_path.unlink(missing_ok=True)
 
-        # decoding cfg를 못 쓸 때: 기본 transcribe (fallback)
-        hyps = self.asr_model.transcribe(
-            [str(tmp_path)],
-            return_hypotheses=True,
-        )
-        tmp_path.unlink(missing_ok=True)
         return hyps
 
     def _apply_punctuation(self, text: str) -> str:
-        # [설정 포인트] punctuation을 끄고 싶으면 USE_PUNCTUATION=False 또는 use_punctuation=False
         if not self.use_punctuation or self.punct_model is None:
             return text
         t = text.strip()
         if not t:
             return text
         try:
-            out = self.punct_model.add_punctuation_capitalization([t])
-            if out and isinstance(out[0], str):
-                return out[0]
+            return self.punct_model.restore_punctuation(t)
         except Exception:
             return text
-        return text
 
     def transcribe_window(
         self,
         audio: np.ndarray,
         initial_prompt: str = "",
         language: Optional[str] = None,
-    ) -> Tuple[str, List[Any]]:
-        # [설정 포인트] default_language / LANGUAGE 설정에 따라 lang을 쓸 수 있음
+    ) -> Tuple[str, List[SegmentLike]]:
+        """
+        WhisperFasterBackend와 동일한 인터페이스:
+          - full_text: str
+          - segs: List[SegmentLike] (Segment 비슷한 객체)
+        """
         lang = language or self.default_language
-        _ = lang  # 필요하면 나중에 decoding 설정에서 사용
+        _ = lang  # 현재는 NeMo decoding에 직접 사용하지 않음
 
-        sampling_rate = 16000  # [설정 포인트] 전체 파이프라인 SAMPLE_RATE와 맞추기
+        sampling_rate = 16000
 
         with torch.autocast(
             device_type=self.device,
@@ -147,10 +169,47 @@ class NemoHotwordPunctBackend(STTBackend):
             return "", []
 
         hyp = hyps[0]
-        full_text = hyp.text.strip() if hasattr(hyp, "text") else str(hyp)
 
-        # [설정 포인트] 여기서 바로 punctuation 적용 여부 선택
-        full_text = self._apply_punctuation(full_text)
+        # 원본 텍스트
+        raw_text = hyp.text.strip() if hasattr(hyp, "text") else str(hyp)
 
-        segments: List[Any] = hyps  # [설정 포인트] 필요시 여기서 segments 구조를 가공 가능
-        return full_text, segments
+        # punctuation 적용 텍스트
+        full_text = self._apply_punctuation(raw_text)
+
+        # Hypothesis.timestamp -> Whisper-style segs
+        ts = getattr(hyp, "timestamp", {}) or {}
+        word_ts = ts.get("word", [])
+        seg_ts = ts.get("segment", [])
+
+        if seg_ts:
+            seg_start = float(seg_ts[0]["start"])
+            seg_end = float(seg_ts[0]["end"])
+        elif word_ts:
+            seg_start = float(word_ts[0]["start"])
+            seg_end = float(word_ts[-1]["end"])
+        else:
+            seg_start = 0.0
+            seg_end = 0.0
+
+        words: List[WordLike] = []
+        for w in word_ts:
+            words.append(
+                WordLike(
+                    word=" " + w["word"],
+                    start=float(w["start"]),
+                    end=float(w["end"]),
+                    probability=1.0,
+                )
+            )
+
+        seg = SegmentLike(
+            id=0,
+            start=seg_start,
+            end=seg_end,
+            text=full_text,
+            words=words,
+        )
+
+        segs: List[SegmentLike] = [seg]
+
+        return full_text, segs
