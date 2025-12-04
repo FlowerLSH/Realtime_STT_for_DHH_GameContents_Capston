@@ -12,6 +12,7 @@ logs/
 
 sample.wav
 test.py
+*.nemo
 
 ScreenOCR/assets/champions
 ScreenOCR/assets/items

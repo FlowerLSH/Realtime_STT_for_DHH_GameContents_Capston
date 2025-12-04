@@ -24,6 +24,7 @@ import time
 import webbrowser
 import os
 import re
+import traceback
 from collections import Counter
 from typing import List, Tuple
 
@@ -149,6 +150,9 @@ def run_pipeline():
         compute_type=COMPUTE_TYPE,
         language=LANGUAGE,
     )
+
+    if hasattr(stt_engine, "set_hotwords"):
+        stt_engine.set_hotwords(hotwords)
 
     audio = AudioStream(
         samplerate=SAMPLE_RATE,
@@ -286,6 +290,10 @@ if __name__ == "__main__":
         print("\n[stop] Pipeline interrupted by user.")
     except Exception as e:
         print(f"\n[error] An unexpected error occurred: {e}")
+
+        print("\n--- 상세 Traceback 정보 ---")
+        traceback.print_exc() 
+        print("----------------------------")
     finally:
         # 3. 🛑 브라우저 자동 종료 (⚠️ 제약 사항 있음)
         print("[cleanup] Stopping services...")

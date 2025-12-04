@@ -1,5 +1,7 @@
-MODEL_NAME = "large-v3-turbo"
-STT_BACKEND_TYPE = "whisper_faster"
+# config.py
+
+MODEL_NAME = "finetuned_model_v4.nemo"  
+STT_BACKEND_TYPE = "nemo_hotword_punct"  
 DEVICE = "cuda"
 COMPUTE_TYPE = "float16"
 LANGUAGE = "en"
@@ -22,11 +24,11 @@ MIN_CLS_PROB = 0.55
 MIN_OCR_SCORE = 0.65
 CHAMP_RETRY_WAIT = 5.0
 
-DEFAULT_HOTWORDS_TXT = r".\default_hotwords.txt"
+DEFAULT_HOTWORDS_TXT = r"C:\Capston\default_hotwords.txt"
 USE_SCREEN_OCR_HOTWORDS = True
 SCREEN_OCR_INCLUDE_SKILLS = False
 
-CASTER_PRESET_JSON = r".\ECAPA-TDNN\caster_presets_word_prosody.json"
+CASTER_PRESET_JSON = r"C:\Capston\ECAPA-TDNN\caster_presets_word_prosody.json"
 
 EVENT_PRIORITY = {
     "scream": 5,
@@ -36,10 +38,6 @@ EVENT_PRIORITY = {
     "sigh": 1,
 }
 
-# EVENT_TAGS = {
-#     "sigh": "(한숨) ",
-#     "laugh": "(웃음) ",
-#     "clap": "(박수) ",
-#     "cheer": "(환호) ",
-#     "scream": "(비명) ",
-# }
+# STT 출력 후 문장부호/대문자 복원 설정
+USE_PUNCTUATION = True
+PUNCT_MODEL_NAME = "punctuation_en_bert"
