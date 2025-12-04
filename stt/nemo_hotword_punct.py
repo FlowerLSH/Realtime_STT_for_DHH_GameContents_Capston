@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Dict, List, Tuple, Optional
+import re  # ✅ 추가
 
 import numpy as np
 import soundfile as sf
@@ -133,6 +134,9 @@ class NemoHotwordPunctBackend(STTBackend):
         return hyps
 
     def _apply_punctuation(self, text: str) -> str:
+        """
+        deepmultilingualpunctuation 으로 쉼표/마침표/물음표 등 복원
+        """
         if not self.use_punctuation or self.punct_model is None:
             return text
         t = text.strip()
@@ -143,6 +147,33 @@ class NemoHotwordPunctBackend(STTBackend):
         except Exception:
             return text
 
+    def _simple_truecase(self, text: str) -> str:
+        """
+        아주 단순한 truecasing:
+          - 문장 시작 / . ? ! 뒤 첫 글자 대문자
+          - 단독 'i' 를 'I' 로
+        고유명사(Deft/Faker 등)는 못 맞춤.
+        """
+        t = text.strip()
+        if not t:
+            return text
+
+        # 일단 전부 소문자로 통일 (NeMo가 원래 소문자 출력이라 큰 차이는 없음)
+        t = t.lower()
+
+        # 문장 시작 / 종결부호 뒤 첫 글자 대문자
+        def cap(match: re.Match) -> str:
+            prefix = match.group(1)
+            ch = match.group(2)
+            return prefix + ch.upper()
+
+        t = re.sub(r'(^|\.\s+|\?\s+|!\s+)([a-z])', cap, t)
+
+        # 단독 i -> I
+        t = re.sub(r'\bi\b', 'I', t)
+
+        return t
+
     def transcribe_window(
         self,
         audio: np.ndarray,
@@ -152,7 +183,7 @@ class NemoHotwordPunctBackend(STTBackend):
         """
         WhisperFasterBackend와 동일한 인터페이스:
           - full_text: str
-          - segs: List[SegmentLike] (Segment 비슷한 객체)
+          - segs: List[SegmentLike]
         """
         lang = language or self.default_language
         _ = lang  # 현재는 NeMo decoding에 직접 사용하지 않음
@@ -170,11 +201,14 @@ class NemoHotwordPunctBackend(STTBackend):
 
         hyp = hyps[0]
 
-        # 원본 텍스트
+        # 원본 텍스트 (대부분 소문자)
         raw_text = hyp.text.strip() if hasattr(hyp, "text") else str(hyp)
 
-        # punctuation 적용 텍스트
-        full_text = self._apply_punctuation(raw_text)
+        # 1단계: punctuation 복원
+        puncted = self._apply_punctuation(raw_text)
+
+        # 2단계: 간단 truecasing
+        full_text = self._simple_truecase(puncted)
 
         # Hypothesis.timestamp -> Whisper-style segs
         ts = getattr(hyp, "timestamp", {}) or {}
@@ -211,5 +245,5 @@ class NemoHotwordPunctBackend(STTBackend):
         )
 
         segs: List[SegmentLike] = [seg]
-
+        print(full_text)
         return full_text, segs
