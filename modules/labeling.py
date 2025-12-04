@@ -7,7 +7,7 @@ import torchaudio
 
 import config
 
-PROJECT_ROOT = r"C:\Capston\ECAPA-TDNN"
+PROJECT_ROOT = r".\ECAPA-TDNN"
 GALLERY_DIR = str(Path(PROJECT_ROOT) / "models" / "test")
 MODEL_DIR = str(Path(PROJECT_ROOT) / "models" / "ecapa_vox")
 MODEL_SOURCE = "speechbrain/spkrec-ecapa-voxceleb"

@@ -13,13 +13,13 @@ from modules.prosody import ProsodyAnalyzer
 # ===== 설정 =====
 
 # recordings 루트: 1,2,...,10 폴더가 있는 위치
-ROOT_DIR = r"C:\Capston\ECAPA-TDNN\test"
+ROOT_DIR = r".\ECAPA-TDNN\test"
 
 # caster id ↔ 이름 매핑 파일
-CASTERS_TXT = r"C:\Capston\ECAPA-TDNN\casters.txt"
+CASTERS_TXT = r".\ECAPA-TDNN\casters.txt"
 
 # 결과 preset json 저장 위치
-OUTPUT_JSON = r"C:\Capston\ECAPA-TDNN\caster_presets_word_prosody.json"
+OUTPUT_JSON = r".\ECAPA-TDNN\caster_presets_word_prosody.json"
 
 # Whisper 모델 이름 (다운로드/캐시 사용)
 # faster-whisper가 지원하는 이름 중 하나: large-v3-turbo
