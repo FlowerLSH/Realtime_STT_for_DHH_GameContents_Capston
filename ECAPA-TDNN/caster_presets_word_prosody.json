@@ -1,7 +1,7 @@
 {
   "1": {
     "id": 1,
-    "name": "",
+    "name": "DRAKOS",
     "samples": {
       "words": 185
     },
@@ -23,7 +23,7 @@
   },
   "10": {
     "id": 10,
-    "name": "",
+    "name": "CHRONICLER",
     "samples": {
       "words": 212
     },
@@ -45,7 +45,7 @@
   },
   "2": {
     "id": 2,
-    "name": "",
+    "name": "HYSTERICS",
     "samples": {
       "words": 300
     },
@@ -67,7 +67,7 @@
   },
   "3": {
     "id": 3,
-    "name": "",
+    "name": "MEDIC",
     "samples": {
       "words": 205
     },
@@ -89,7 +89,7 @@
   },
   "4": {
     "id": 4,
-    "name": "",
+    "name": "DAGDA",
     "samples": {
       "words": 326
     },
@@ -111,7 +111,7 @@
   },
   "5": {
     "id": 5,
-    "name": "",
+    "name": "CAPTAINFLOWERS",
     "samples": {
       "words": 320
     },
@@ -133,7 +133,7 @@
   },
   "6": {
     "id": 6,
-    "name": "",
+    "name": "KOBE",
     "samples": {
       "words": 231
     },
@@ -155,7 +155,7 @@
   },
   "7": {
     "id": 7,
-    "name": "",
+    "name": "ATLUS",
     "samples": {
       "words": 241
     },
@@ -177,7 +177,7 @@
   },
   "8": {
     "id": 8,
-    "name": "",
+    "name": "AZAEL",
     "samples": {
       "words": 238
     },
@@ -199,7 +199,7 @@
   },
   "9": {
     "id": 9,
-    "name": "",
+    "name": "VEDIUS",
     "samples": {
       "words": 259
     },

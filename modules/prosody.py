@@ -100,7 +100,11 @@ class ProsodyAnalyzer:
         """
         if np.isnan(loudness_raw):
             return 0.5
-        val = (loudness_raw + 60.0) / 60.0
+
+        L_MIN = 0.3  # 또는 실제 데이터 p05
+        L_MAX = 1.0   # 또는 실제 데이터 p95
+
+        val = (loudness_raw - L_MIN) / (L_MAX - L_MIN)
         return float(np.clip(val, 0.0, 1.0))
 
     def _fallback_normalize_emotion(self, value_raw: float) -> float:
@@ -109,8 +113,7 @@ class ProsodyAnalyzer:
         """
         if np.isnan(value_raw):
             return 0.5
-        val = (value_raw + 1.0) / 2.0
-        return float(np.clip(val, 0.0, 1.0))
+        return float(np.clip(value_raw, 0.0, 1.0))
 
     # ------------------------------------------------------------------
     # preset JSON 로딩 + 이름 -> ID 매핑
@@ -172,7 +175,6 @@ class ProsodyAnalyzer:
                 continue
             name_to_sid[str(name)] = sid
         self._name_to_sid = name_to_sid if name_to_sid else None
-
         print(f"[prosody] Loaded {len(data)} caster presets from {p}")
         return self._presets
 
@@ -213,12 +215,12 @@ class ProsodyAnalyzer:
 
         entry = presets.get(str(speaker_id))
         if not isinstance(entry, dict):
+            
             return (
                 self._fallback_normalize_loudness(loudness_raw),
                 self._fallback_normalize_emotion(valence_raw),
                 self._fallback_normalize_emotion(arousal_raw),
             )
-
         # --- loudness: p05 ~ p95 구간을 0~1로 매핑 ----------------------
         loud_cfg = entry.get("loudness", {})
         lp05 = float(loud_cfg.get("p05", -60.0))
@@ -435,14 +437,18 @@ class ProsodyAnalyzer:
           각 word의 speaker 이름을 preset JSON의 name과 매칭해서
           loudness/valence/arousal 을 caster별 preset 기준으로 다시 정규화하고 덮어씀.
         """
+
         if not isinstance(prosody_info, dict):
             return
         words = prosody_info.get("words")
+
         if not words:
             return
 
         presets = self._load_presets()
+
         if not presets or not self._name_to_sid:
+
             # preset 파일이 없으면 아무 것도 안 하고 종료
             return
 

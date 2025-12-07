@@ -125,31 +125,41 @@
 
     // 단어 하나의 prosody -> weight / size / color 매핑
     function wordProsodyToStyle(word) {
-      const loud    = clamp(typeof word.loudness === "number" ? word.loudness : 0.5, 0, 1);
-      const arousal = clamp(typeof word.arousal  === "number" ? word.arousal  : 0.5, 0, 1);
-      const valence = clamp(typeof word.valence  === "number" ? word.valence  : 0.5, 0, 1);
+      const loud      = clamp(typeof word.loudness === "number" ? word.loudness : 0.5, 0, 1);
+      const arousal = clamp(typeof word.arousal    === "number" ? word.arousal    : 0.5, 0, 1);
+      const valence = clamp(typeof word.valence    === "number" ? word.valence    : 0.5, 0, 1);
 
-      // 1. ✨ 민감도 강화 (핵심): 지수를 1.5로 설정하여 높은 값에서 급격한 변화 유도
-      // (기존 loudShaped: 0.7, arousalShaped: 1.3)
-      const SHAPING_EXP = 1.5; 
+      // 민감도 지수 (SHAPING_EXP)는 1.0으로 유지합니다.
+      const SHAPING_EXP = 1.0; 
       
       const loudShaped    = Math.pow(loud, SHAPING_EXP);
       const arousalShaped = Math.pow(arousal, SHAPING_EXP);
+      // valenceShaped는 여기서는 사용하지 않지만 변수 선언은 남겨둡니다.
+      const valenceShaped = Math.pow(valence, SHAPING_EXP) 
       
-      // 2. 굵기(Weight) 범위 확대: 350 -> 100으로 최소 굵기 감소
-      const weight = Math.round(lerp(10, 700, loudShaped));
+      // 굵기(Weight): loud에 따라 300 ~ 800
+      const weight = Math.round(lerp(300, 800, loudShaped));
       
-      // 3. 크기(Size) 범위 확대: 40px -> 50px으로 최대 크기 증가
-      const sizePx = lerp(20, 40, arousalShaped);
+      // 크기(Size): arousal에 따라 24px ~ 36px
+      const sizePx = lerp(28, 36, arousalShaped);
       
-      // 4. 채도(Saturation) 범위 확대: 90% -> 100%으로 최대 채도 증가
-      const hue = lerp(210, 40, valence); 
-      const saturation = lerp(10, 100, arousalShaped);
-      const lightness = 88;
+  
+      
+      // 1. Hue (색조): 0.5를 기준으로 빨강(0) 또는 파랑(240)만 선택
+      const hue = valence < 0.5 ? 240 : 0; 
+      
+      const neutrality = Math.abs(valence - 0.5) * 2; 
+      
+      const baseSaturation = lerp(10, 90, neutrality);
+      
+      const saturation = clamp(baseSaturation * arousalShaped, 10, 90);
+      
+      const lightness = lerp(100, 88, neutrality); 
+      
       const color = `hsl(${hue}, ${saturation}%, ${lightness}%)`;
 
       return { weight, sizePx, color };
-    }
+  }
 
     function normalizeSpeakerName(s) {
       if (!s) return "";
