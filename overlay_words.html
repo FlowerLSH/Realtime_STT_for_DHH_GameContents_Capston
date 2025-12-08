@@ -101,9 +101,133 @@
         color 0.08s ease-out;
       will-change: font-weight, font-size, color;
     }
+    .control-root {
+      position: fixed;
+      inset: 0;
+      display: flex;
+      align-items: flex-start;
+      justify-content: center;
+      pointer-events: none; /* 패널 바깥은 클릭 안 가로채게 */
+      font-family: "Inter", system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      z-index: 10;
+    }
+
+    .control-panel {
+      margin-top: 0.8rem;
+      background: rgba(0, 0, 0, 0.65);
+      border-radius: 12px;
+      padding: 0.6rem 0.9rem;
+      backdrop-filter: blur(6px);
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.4rem 0.8rem;
+      font-size: 0.75rem;
+      color: #f0f0f0;
+      pointer-events: auto; /* 패널 자체는 클릭 가능 */
+    }
+
+    .control-title {
+      font-size: 0.8rem;
+      font-weight: 600;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      opacity: 0.85;
+      margin-right: 0.8rem;
+      align-self: center;
+    }
+
+    .control-group {
+      display: flex;
+      flex-direction: column;
+      gap: 0.25rem;
+      min-width: 150px;
+    }
+
+    .control-label {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 0.4rem;
+      opacity: 0.9;
+    }
+
+    .control-value {
+      font-variant-numeric: tabular-nums;
+      opacity: 0.8;
+    }
+
+    .control-panel input[type="range"] {
+      width: 160px;
+    }
   </style>
 </head>
 <body>
+  <div class="control-root">
+    <div class="control-panel">
+      <div class="control-title">Font Mapping</div>
+
+      <div class="control-group">
+        <div class="control-label">
+          <span>Weight min</span>
+          <span id="label-weight-min" class="control-value"></span>
+        </div>
+        <input
+          id="ctrl-weight-min"
+          type="range"
+          min="100"
+          max="900"
+          step="50"
+          value="300"
+        />
+      </div>
+
+      <div class="control-group">
+        <div class="control-label">
+          <span>Weight max</span>
+          <span id="label-weight-max" class="control-value"></span>
+        </div>
+        <input
+          id="ctrl-weight-max"
+          type="range"
+          min="100"
+          max="900"
+          step="50"
+          value="800"
+        />
+      </div>
+
+      <div class="control-group">
+        <div class="control-label">
+          <span>Size min (px)</span>
+          <span id="label-size-min" class="control-value"></span>
+        </div>
+        <input
+          id="ctrl-size-min"
+          type="range"
+          min="20"
+          max="40"
+          step="0.5"
+          value="28"
+        />
+      </div>
+
+      <div class="control-group">
+        <div class="control-label">
+          <span>Size max (px)</span>
+          <span id="label-size-max" class="control-value"></span>
+        </div>
+        <input
+          id="ctrl-size-max"
+          type="range"
+          min="20"
+          max="40"
+          step="0.5"
+          value="36"
+        />
+      </div>
+    </div>
+  </div>
+
   <div class="overlay-root">
     <div class="subtitle-stack" id="subtitle-stack"></div>
   </div>
@@ -114,6 +238,13 @@
     const MAX_ITEMS = 3;       // 최대 유지 개수
 
     const stackEl = document.getElementById("subtitle-stack");
+
+    const styleConfig = {
+      weightMin: 300,
+      weightMax: 800,
+      sizeMin: 28,
+      sizeMax: 36,
+    };
 
     function clamp(x, min, max) {
       return Math.min(Math.max(x, min), max);
@@ -138,10 +269,12 @@
       const valenceShaped = Math.pow(valence, SHAPING_EXP) 
       
       // 굵기(Weight): loud에 따라 300 ~ 800
-      const weight = Math.round(lerp(300, 800, loudShaped));
-      
-      // 크기(Size): arousal에 따라 24px ~ 36px
-      const sizePx = lerp(28, 36, arousalShaped);
+      const weight = Math.round(
+        lerp(styleConfig.weightMin, styleConfig.weightMax, loudShaped)
+      );
+
+      // 크기(Size): arousal에 따라 styleConfig.sizeMin ~ sizeMax
+      const sizePx = lerp(styleConfig.sizeMin, styleConfig.sizeMax, arousalShaped);
       
   
       
@@ -278,6 +411,50 @@
       while (stackEl.children.length > MAX_ITEMS) {
         stackEl.removeChild(stackEl.firstChild);
       }
+    }
+    function setupControls() {
+      const wMinInput = document.getElementById("ctrl-weight-min");
+      const wMaxInput = document.getElementById("ctrl-weight-max");
+      const sMinInput = document.getElementById("ctrl-size-min");
+      const sMaxInput = document.getElementById("ctrl-size-max");
+
+      const wMinLabel = document.getElementById("label-weight-min");
+      const wMaxLabel = document.getElementById("label-weight-max");
+      const sMinLabel = document.getElementById("label-size-min");
+      const sMaxLabel = document.getElementById("label-size-max");
+
+      if (!wMinInput || !wMaxInput || !sMinInput || !sMaxInput) {
+        // 컨트롤 패널이 없는 경우(예: 다른 HTML에서 재사용) 그냥 무시
+        return;
+      }
+
+      function applyFromInputs() {
+        let wMin = Number(wMinInput.value);
+        let wMax = Number(wMaxInput.value);
+        let sMin = Number(sMinInput.value);
+        let sMax = Number(sMaxInput.value);
+
+        // min > max가 되면 자동으로 서로 바꿔치기
+        if (wMin > wMax) [wMin, wMax] = [wMax, wMin];
+        if (sMin > sMax) [sMin, sMax] = [sMax, sMin];
+
+        styleConfig.weightMin = wMin;
+        styleConfig.weightMax = wMax;
+        styleConfig.sizeMin = sMin;
+        styleConfig.sizeMax = sMax;
+
+        if (wMinLabel) wMinLabel.textContent = wMin.toString();
+        if (wMaxLabel) wMaxLabel.textContent = wMax.toString();
+        if (sMinLabel) sMinLabel.textContent = sMin.toFixed(1);
+        if (sMaxLabel) sMaxLabel.textContent = sMax.toFixed(1);
+      }
+
+      [wMinInput, wMaxInput, sMinInput, sMaxInput].forEach((input) => {
+        input.addEventListener("input", applyFromInputs);
+      });
+
+      // 초기 한 번 적용
+      applyFromInputs();
     }
 
     // ----------------- 데모용 샘플 10개 -----------------
@@ -469,7 +646,7 @@
     }
 
     // ----------------- 모드 선택 -----------------
-
+    setupControls();
     if (DEMO_MODE) {
       runDemo();
     } else {

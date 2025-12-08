@@ -3,7 +3,7 @@
 from .base import STTBackend
 from .whisper_faster import WhisperFasterBackend
 from .nemo_hotword_punct import NemoHotwordPunctBackend
-
+from typing import Any, Dict, List, Tuple, Optional
 
 def create_stt_backend(
     model_name: str,
@@ -11,6 +11,7 @@ def create_stt_backend(
     device: str = "cuda",
     compute_type: str = "float16",
     language: str | None = None,
+    hotwords: Optional[Dict[str, float]] = None,
 ) -> STTBackend:
     if backend_type == "whisper_faster":
         return WhisperFasterBackend(
@@ -30,6 +31,7 @@ def create_stt_backend(
             default_language=language,
             use_punctuation=USE_PUNCTUATION,
             punct_model_name=PUNCT_MODEL_NAME,
+            hotwords = hotwords
         )
 
     raise ValueError(f"Unknown STT backend type: {backend_type}")

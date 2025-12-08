@@ -133,46 +133,15 @@ class NemoHotwordPunctBackend(STTBackend):
 
         return hyps
 
-    def _apply_punctuation(self, text: str) -> str:
-        """
-        deepmultilingualpunctuation 으로 쉼표/마침표/물음표 등 복원
-        """
-        if not self.use_punctuation or self.punct_model is None:
-            return text
-        t = text.strip()
-        if not t:
-            return text
-        try:
-            return self.punct_model.restore_punctuation(t)
-        except Exception:
-            return text
-
-    def _simple_truecase(self, text: str) -> str:
-        """
-        아주 단순한 truecasing:
-          - 문장 시작 / . ? ! 뒤 첫 글자 대문자
-          - 단독 'i' 를 'I' 로
-        고유명사(Deft/Faker 등)는 못 맞춤.
-        """
-        t = text.strip()
-        if not t:
-            return text
-
-        # 일단 전부 소문자로 통일 (NeMo가 원래 소문자 출력이라 큰 차이는 없음)
-        t = t.lower()
-
-        # 문장 시작 / 종결부호 뒤 첫 글자 대문자
-        def cap(match: re.Match) -> str:
-            prefix = match.group(1)
-            ch = match.group(2)
-            return prefix + ch.upper()
-
-        t = re.sub(r'(^|\.\s+|\?\s+|!\s+)([a-z])', cap, t)
-
-        # 단독 i -> I
-        t = re.sub(r'\bi\b', 'I', t)
-
-        return t
+    def apply_capitalize(self, word: str):
+        if not self.use_punctuation:
+            return word
+        elif word == "t":
+            return "T1"
+        elif word.capitalize() in list(self.hotwords):
+            return word.capitalize()
+        else:
+            return word
 
     def transcribe_window(
         self,
@@ -204,12 +173,6 @@ class NemoHotwordPunctBackend(STTBackend):
         # 원본 텍스트 (대부분 소문자)
         raw_text = hyp.text.strip() if hasattr(hyp, "text") else str(hyp)
 
-        # 1단계: punctuation 복원
-        puncted = self._apply_punctuation(raw_text)
-
-        # 2단계: 간단 truecasing
-        full_text = self._simple_truecase(puncted)
-
         # Hypothesis.timestamp -> Whisper-style segs
         ts = getattr(hyp, "timestamp", {}) or {}
         word_ts = ts.get("word", [])
@@ -227,6 +190,9 @@ class NemoHotwordPunctBackend(STTBackend):
 
         words: List[WordLike] = []
         for w in word_ts:
+            if w["word"] == "??":
+                continue
+            w["word"] = self.apply_capitalize(w["word"])
             words.append(
                 WordLike(
                     word=" " + w["word"],
@@ -240,10 +206,10 @@ class NemoHotwordPunctBackend(STTBackend):
             id=0,
             start=seg_start,
             end=seg_end,
-            text=full_text,
+            text=raw_text,
             words=words,
         )
 
         segs: List[SegmentLike] = [seg]
-        print(full_text)
-        return full_text, segs
+        print(raw_text)
+        return raw_text, segs

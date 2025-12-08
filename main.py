@@ -194,7 +194,7 @@ def run_pipeline():
             stream_time += STEP_SEC
             window_start_time = max(0.0, stream_time - WINDOW_SEC)
 
-            seg_len = int(SAMPLE_RATE * 1.0)
+            seg_len = int(SAMPLE_RATE * 5.0)
             if wav.size <= seg_len:
                 seg_wav = wav
                 seg_dur = wav.size / float(SAMPLE_RATE)
