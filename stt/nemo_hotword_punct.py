@@ -190,7 +190,7 @@ class NemoHotwordPunctBackend(STTBackend):
 
         words: List[WordLike] = []
         for w in word_ts:
-            if w["word"] == "??":
+            if "⁇" in w["word"]:
                 continue
             w["word"] = self.apply_capitalize(w["word"])
             words.append(
@@ -211,5 +211,6 @@ class NemoHotwordPunctBackend(STTBackend):
         )
 
         segs: List[SegmentLike] = [seg]
+        raw_text.replace("⁇", "")
         print(raw_text)
         return raw_text, segs
